@@ -114,10 +114,16 @@ def _heading_level(line: str) -> tuple[str | None, str, bool]:
 
 
 def _unmatched_items(line: str) -> list[str]:
+    """Short list items that contain no taxonomy alias at all: possible gaps in the taxonomy.
+
+    This asks only "is it in the taxonomy?". The context rules of `find_skills` are not applied
+    here: a lone lowercase "go" fails them, yet "go" is an alias and must not be reported.
+    """
+    taxonomy = get_taxonomy()
     items = []
     for item in re.split(_LIST_SEPARATORS, normalize_text(line)):
         item = re.sub(r"^(and|or)\s+", "", item.strip(" .\t-*()"))
-        if item and len(item) <= 30 and 1 <= len(item.split()) <= 3 and not find_skills(item):
+        if item and len(item) <= 30 and 1 <= len(item.split()) <= 3 and not taxonomy.find(item):
             items.append(item)
     return items
 

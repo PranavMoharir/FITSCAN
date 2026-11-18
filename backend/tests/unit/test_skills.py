@@ -81,6 +81,14 @@ def test_unmatched_terms_come_from_skill_lists():
     assert extract_job_skills("Requirements: Python, dbt, Looker Studio").unmatched == ["dbt", "looker studio"]
 
 
+def test_ambiguous_aliases_are_not_reported_as_unmatched():
+    # The line from the mock site's "Go Backend Engineer". Go is saved as required, so the crawl
+    # summary must not also list "go" as a term missing from the taxonomy.
+    skills = extract_job_skills("Requirements\n- Go, PostgreSQL and Kafka\n- Experience with dbt, Airflow")
+    assert skills.required == ["Airflow", "Go", "Kafka", "PostgreSQL"]
+    assert skills.unmatched == ["experience with dbt"]
+
+
 def test_search_terms_use_the_same_normalizer():
     taxonomy = get_taxonomy()
     assert [taxonomy.canonical(t) for t in ["js", " ReactJS ", "Postgres", "golang", "unknown-thing"]] == [
