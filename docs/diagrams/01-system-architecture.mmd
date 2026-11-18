@@ -1,0 +1,49 @@
+%% System architecture: components, containers and communication paths
+%% Source: docs/HLD_Job_Candidate_Matching_Platform_Full.md
+flowchart TB
+    user(["User (operator)"])
+    fe["React SPA in the browser<br/>TypeScript · Vite · Tailwind · shadcn/ui"]
+
+    subgraph apiC["API container"]
+        api["FastAPI REST API<br/>Pydantic · OpenAPI docs"]
+        jobctl["Background<br/>job control"]
+        search["Search and<br/>match queries"]
+        export["Export service<br/>CSV / JSON"]
+    end
+
+    subgraph workerC["Celery worker container"]
+        worker["Celery worker"]
+        crawler["Web crawler<br/>BFS · robots.txt<br/>rate limit · retry"]
+        extractors["Extractor plug-ins<br/>httpx + BS4 · Playwright"]
+        parser["Resume parser<br/>PyMuPDF · pdfplumber"]
+        ocr["OCR<br/>Tesseract"]
+        skills["Skill extraction<br/>and normalization"]
+        matcher["Matching engine<br/>scoring · scikit-learn"]
+    end
+
+    redis[("Redis<br/>broker")]
+    db[("PostgreSQL<br/>via SQLAlchemy")]
+    uploads[["Uploads volume<br/>PDF files"]]
+    sites["Allow-listed job sites<br/>incl. mock site"]
+
+    user --> fe
+    fe -->|"HTTP + JSON (REST)"| api
+    api --> jobctl
+    api --> search
+    api --> export
+    jobctl -->|"1. insert job"| db
+    jobctl -->|"2. enqueue id"| redis
+    api -->|"save PDFs"| uploads
+    search -->|"SQL"| db
+    export -->|"read"| db
+    redis -->|"deliver task"| worker
+    db <-->|"records, progress, logs"| worker
+    uploads -->|"read PDF"| parser
+    worker --> crawler
+    worker --> parser
+    worker --> matcher
+    crawler --> extractors
+    extractors --> skills
+    parser -->|"scanned pages"| ocr
+    parser --> skills
+    crawler -->|"HTTP(S)"| sites

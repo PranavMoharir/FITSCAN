@@ -1,0 +1,21 @@
+%% Workflow D: search and export
+%% Source: docs/HLD_Job_Candidate_Matching_Platform_Full.md
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant FE as React UI
+    participant API as FastAPI
+    participant SN as Skill normalizer
+    participant DB as PostgreSQL
+
+    U->>FE: Search "backend", skill "JS"
+    FE->>API: GET /jobs?q=backend&skill=JS
+    API->>SN: Normalize "JS"
+    SN-->>API: JavaScript
+    API->>DB: Filtered, paginated query
+    DB-->>API: Rows + total
+    API-->>FE: 200 items, total, page
+    U->>FE: Click Export CSV
+    FE->>API: GET /exports/jobs?format=csv&...
+    API->>DB: Same filters, streamed
+    API-->>FE: 200 text/csv attachment

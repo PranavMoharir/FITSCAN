@@ -1,0 +1,17 @@
+%% Workflow C: candidate–job matching
+%% Source: docs/HLD_Job_Candidate_Matching_Platform_Full.md
+flowchart TD
+    T["Trigger: Recompute matches<br/>POST /background-jobs/match"] --> Ld["Worker loads all jobs and candidates<br/>with canonical skill sets"]
+    Ld --> V["Fit TF-IDF on job descriptions and resume text<br/>(scikit-learn, tie-breaker only)"]
+    V --> P["For every candidate and every job"]
+    P --> R["R = required ratio<br/>matched required / total required"]
+    P --> N["N = nice-to-have ratio<br/>matched nice / total nice"]
+    P --> E["E = experience fit<br/>min(1, years / minimum)"]
+    P --> Lf["L = location fit<br/>1 if same city or remote, else 0"]
+    R --> S["score = 70·R + 15·N<br/>+ 10·E + 5·L<br/>exact, clamped to 0–100<br/>stored unrounded"]
+    N --> S
+    E --> S
+    Lf --> S
+    S --> X["Matched skills, missing skills,<br/>score breakdown, explanation"]
+    X --> W["Replace all match rows<br/>in one transaction"]
+    W --> Q["Top 10 jobs per candidate<br/>Top 10 candidates per job<br/>ranked by unrounded score<br/>(rounded only for display)"]

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mock Jobs – JavaScript listing</title>
+  <style>body{font-family:system-ui,sans-serif;max-width:52rem;margin:2rem auto;padding:0 1rem;line-height:1.5}
+  .job-card{border:1px solid #ddd;border-radius:8px;padding:1rem;margin:1rem 0;list-style:none}</style>
+</head>
+<body>
+<header><a href="/">Mock Jobs</a> · <a href="/static/index.html">Static listing</a> · <a href="/dynamic/index.html">JavaScript listing</a></header>
+<main>
+<h1>Remote-friendly roles</h1>
+<p>This list is built in the browser by JavaScript; the HTML sent by the server contains no jobs.</p>
+<div id="jobs" data-state="loading"><p class="loading">Loading jobs…</p></div>
+</main>
+<script>
+const JOBS = [
+  {
+    "id": "full-stack-developer",
+    "title": "Full Stack Developer",
+    "company": "Orbit Commerce",
+    "location": "Remote",
+    "job_type": "Full-time",
+    "salary": "$70,000 – $90,000 per year",
+    "posted": "2 days ago",
+    "intro": "Orbit Commerce builds storefronts for independent brands.",
+    "required": [
+      "3+ years of experience with JavaScript",
+      "Node.js and React",
+      "MongoDB"
+    ],
+    "nice": [
+      "GraphQL",
+      "AWS"
+    ]
+  },
+  {
+    "id": "qa-automation-engineer",
+    "title": "QA Automation Engineer",
+    "company": "Testwise",
+    "location": "Chennai, India (Hybrid)",
+    "job_type": "Contract",
+    "salary": "₹60,000 – ₹80,000 per month",
+    "posted": "2026-11-05",
+    "intro": "Help us automate the testing of our banking apps.",
+    "required": [
+      "2 years of experience in test automation",
+      "Python, Selenium and Pytest"
+    ],
+    "nice": [
+      "Jenkins"
+    ]
+  },
+  {
+    "id": "go-backend-engineer",
+    "title": "Go Backend Engineer",
+    "company": "Streamline",
+    "location": "Remote (India)",
+    "job_type": "Full-time",
+    "salary": "",
+    "posted": "2026-11-08",
+    "intro": "Streamline processes millions of payment events a day.",
+    "required": [
+      "5+ years of backend experience",
+      "Go, PostgreSQL and Kafka",
+      "Designing REST APIs"
+    ],
+    "nice": [
+      "Kubernetes"
+    ]
+  }
+];
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+function render() {
+  const items = JOBS.map(job => `
+    <div class="job-card" id="${job.id}">
+      <h2 class="job-title">${esc(job.title)}</h2>
+      <p class="company">${esc(job.company)}</p>
+      <p class="location">${esc(job.location)}</p>
+      <p class="job-type">${esc(job.job_type)}</p>
+      ${job.salary ? `<p class="salary">${esc(job.salary)}</p>` : ""}
+      <p class="posted">Posted <time>${esc(job.posted)}</time></p>
+      <div class="description">
+        <p>${esc(job.intro)}</p>
+        <h3>Requirements</h3><ul>${job.required.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+        <h3>Nice to have</h3><ul>${job.nice.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+      </div>
+      <a class="apply" href="https://careers.example.com/jobs/${job.id}">Apply</a>
+    </div>`).join("");
+  const box = document.getElementById("jobs");
+  box.innerHTML = items;
+  box.dataset.state = "ready";
+}
+window.addEventListener("DOMContentLoaded", () => setTimeout(render, 300));
+</script>
+</body>
+</html>

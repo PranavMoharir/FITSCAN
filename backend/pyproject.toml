@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fitscan-backend"
+version = "0.1.0"
+description = "Job–Candidate Matching Platform: FastAPI API and Celery worker"
+requires-python = ">=3.12"
+# Runtime dependencies (HLD §7.5). Libraries for resume parsing, OCR and matching are
+# added in the phases that implement them.
+dependencies = [
+    "fastapi==0.162.0",
+    "uvicorn==0.54.0",
+    "pydantic==2.14.2",
+    "pydantic-settings==2.16.2",
+    "sqlalchemy==2.1.7",
+    "psycopg[binary]==3.3.7",
+    "alembic==1.20.1",
+    "celery[redis]==5.6.3",
+    "redis==8.1.0",
+    "httpx==0.28.1",  # crawler HTTP client (and FastAPI's TestClient)
+    "beautifulsoup4==4.15.0",  # HTML parsing in the extractors
+]
+
+[project.optional-dependencies]
+# Worker-only libraries; the worker image installs them (and the Chromium browser).
+worker = [
+    "playwright==1.64.1",  # headless Chromium, only for pages that need JavaScript
+]
+# Test tools: pip install -e ".[dev]"
+dev = [
+    "pytest==9.2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

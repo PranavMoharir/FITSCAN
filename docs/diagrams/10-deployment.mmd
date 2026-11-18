@@ -1,0 +1,31 @@
+%% Docker Compose deployment architecture
+%% Source: docs/HLD_Job_Candidate_Matching_Platform_Full.md
+flowchart TB
+    browser(["User browser"])
+
+    subgraph host["Host machine: docker compose up"]
+        subgraph net["Compose network (service names resolve via internal DNS)"]
+            fe["frontend<br/>static React build"]
+            api["api<br/>FastAPI + Uvicorn"]
+            redis[("redis<br/>Redis broker")]
+            worker["worker<br/>Celery + Playwright + Tesseract"]
+            db[("db<br/>PostgreSQL")]
+            mock["mock-site (optional)<br/>static + JS job pages"]
+        end
+        uploads[["volume: uploads<br/>(api writes, worker reads)"]]
+        pgdata[["volume: pgdata"]]
+    end
+
+    internet["External allow-listed<br/>job websites"]
+
+    browser -->|"load UI (published port)"| fe
+    browser -->|"REST calls (published port)"| api
+    api -->|"enqueue: redis:6379"| redis
+    redis -->|"deliver tasks"| worker
+    api -->|"SQL: db:5432"| db
+    worker -->|"SQL: db:5432"| db
+    worker -->|"HTTP"| mock
+    worker -->|"HTTPS"| internet
+    api --- uploads
+    worker --- uploads
+    db --- pgdata

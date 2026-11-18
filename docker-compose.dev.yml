@@ -1,0 +1,15 @@
+# Development only: also publish PostgreSQL and Redis on this machine (127.0.0.1),
+# so the API, worker and tests can run from the Python virtual environment.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis
+#
+# `docker compose up` on its own does not use this file, so db and redis stay unpublished.
+# PostgreSQL uses host port 5433, so it does not clash with a PostgreSQL installed on this machine.
+
+services:
+  db:
+    ports:
+      - "127.0.0.1:5433:5432"
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"

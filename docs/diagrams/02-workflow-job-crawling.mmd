@@ -1,0 +1,37 @@
+%% Workflow A: job crawling sequence
+%% Source: docs/HLD_Job_Candidate_Matching_Platform_Full.md
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant FE as React UI
+    participant API as FastAPI
+    participant R as Redis
+    participant DB as PostgreSQL
+    participant W as Worker (crawler)
+    participant X as Extractor
+    participant S as Website
+
+    U->>FE: Submit seed URL
+    FE->>API: POST /background-jobs/crawl
+    API->>API: Validate config
+    API->>DB: Insert job (queued)
+    API->>R: Enqueue job id
+    API-->>FE: 202 Accepted
+    R-->>W: Deliver task
+    W->>DB: Set running
+    loop Each URL in BFS order, until done or cancelled
+        W->>S: robots.txt (once per host)
+        W->>S: GET page (rate limit, retry)
+        S-->>W: HTML
+        W->>X: parse(url, html)
+        Note over X: HTTP by default,<br/>Playwright if JS needed
+        X-->>W: Jobs + links
+        W->>W: Normalize, skills, validate
+        W->>DB: Upsert jobs
+        W->>DB: Progress + logs
+    end
+    W->>DB: Set completed
+    loop While the job is active
+        FE->>API: GET status, logs
+        API-->>FE: Progress, new logs
+    end

@@ -1,0 +1,32 @@
+# Local configuration (contains passwords). Only the template is committed.
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Node / Vite
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Uploaded resumes when the backend runs outside Docker
+backend/uploads/
+
+# Logs
+*.log
+
+# Editors and operating systems (OneDrive and Word create some of these)
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*

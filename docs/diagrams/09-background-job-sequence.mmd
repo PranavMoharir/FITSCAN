@@ -1,0 +1,39 @@
+%% Background job sequence: queuing, execution, progress and cancellation
+%% Source: docs/HLD_Job_Candidate_Matching_Platform_Full.md
+sequenceDiagram
+    autonumber
+    participant FE as React UI
+    participant API as FastAPI
+    participant DB as PostgreSQL
+    participant R as Redis broker
+    participant W as Celery worker
+
+    FE->>API: POST /background-jobs/{type}
+    API->>DB: Insert queued, commit
+    API->>R: Publish job id
+    API-->>FE: 202 Accepted
+    R-->>W: Deliver message
+    W->>DB: Claim: queued to running
+    alt Job claimed
+        loop Each item (page, file or candidate)
+            W->>DB: Save item results
+            W->>DB: Progress, heartbeat, log rows
+            W->>DB: Read cancel_requested
+        end
+        alt Cancel requested
+            W->>DB: Status cancelled
+        else Job-level error
+            W->>DB: Status failed with error_message
+        else Finished
+            W->>DB: Status completed
+        end
+    else Already cancelled
+        W-->>W: Exit without work
+    end
+    par Polling (any time)
+        FE->>API: GET status and logs
+        API->>DB: Read progress, new logs
+    and Cancel (any time)
+        FE->>API: POST /{id}/cancel
+        API->>DB: Cancel queued job or set flag
+    end

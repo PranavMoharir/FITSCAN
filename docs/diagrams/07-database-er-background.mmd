@@ -1,0 +1,32 @@
+%% Database ER diagram (2 of 2): background processing data
+%% Source: docs/HLD_Job_Candidate_Matching_Platform_Full.md
+erDiagram
+    BACKGROUND_JOBS ||--o{ BACKGROUND_JOB_LOGS : writes
+    BACKGROUND_JOBS |o--o{ JOBS : "created by crawl"
+    BACKGROUND_JOBS |o--o{ CANDIDATES : "created by resume job"
+
+    BACKGROUND_JOBS {
+        uuid background_job_id PK
+        text type
+        text status
+        jsonb params
+        int progress_current
+        int progress_total
+        boolean cancel_requested
+        timestamptz heartbeat_at
+    }
+    BACKGROUND_JOB_LOGS {
+        bigint log_id PK
+        uuid background_job_id FK
+        timestamptz created_at
+        text level
+        text message
+    }
+    JOBS {
+        uuid job_id PK
+        uuid background_job_id FK
+    }
+    CANDIDATES {
+        uuid candidate_id PK
+        uuid background_job_id FK
+    }

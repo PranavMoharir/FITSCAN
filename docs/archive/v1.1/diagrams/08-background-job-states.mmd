@@ -1,0 +1,13 @@
+%% Background job lifecycle (state diagram)
+%% Source: docs/HLD_Job_Candidate_Matching_Platform.md
+stateDiagram-v2
+    [*] --> queued: API creates background job
+    queued --> running: worker claims job
+    queued --> cancelled: cancel before start
+    queued --> failed: could not be enqueued
+    running --> completed: processing finished
+    running --> failed: job-level error or worker lost
+    running --> cancelled: cancel request observed
+    completed --> [*]
+    failed --> [*]
+    cancelled --> [*]

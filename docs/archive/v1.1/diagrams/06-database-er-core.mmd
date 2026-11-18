@@ -1,0 +1,60 @@
+%% Database ER diagram (1 of 2): core matching data
+%% Source: docs/HLD_Job_Candidate_Matching_Platform.md
+erDiagram
+    JOBS ||--o{ JOB_SKILLS : lists
+    SKILLS ||--o{ JOB_SKILLS : "appears in"
+    JOBS ||--o{ MATCHES : "scored in"
+    CANDIDATES ||--o{ MATCHES : "scored in"
+    SKILLS ||--o{ CANDIDATE_SKILLS : "appears in"
+    CANDIDATES ||--o{ CANDIDATE_SKILLS : has
+
+    JOBS {
+        uuid job_id PK
+        text title
+        text company
+        text location
+        text job_type
+        numeric salary_min
+        numeric salary_max
+        date posted_date
+        text description
+        numeric min_experience_years
+        text apply_url
+        text source
+        text dedup_key UK
+    }
+    CANDIDATES {
+        uuid candidate_id PK
+        text name
+        text email
+        text phone
+        text city
+        text current_title
+        numeric years_experience
+        jsonb education
+        text summary
+        text source_file
+        boolean parsed_with_ocr
+        text file_sha256 UK
+    }
+    SKILLS {
+        int skill_id PK
+        text canonical_name UK
+    }
+    JOB_SKILLS {
+        uuid job_id PK, FK
+        int skill_id PK, FK
+        text requirement_level
+    }
+    CANDIDATE_SKILLS {
+        uuid candidate_id PK, FK
+        int skill_id PK, FK
+    }
+    MATCHES {
+        uuid candidate_id PK, FK
+        uuid job_id PK, FK
+        numeric score
+        jsonb matched_skills
+        jsonb missing_skills
+        text explanation
+    }

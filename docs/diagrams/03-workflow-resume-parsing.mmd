@@ -1,0 +1,25 @@
+%% Workflow B: resume upload and parsing
+%% Source: docs/HLD_Job_Candidate_Matching_Platform_Full.md
+flowchart LR
+    subgraph apiS["API: at upload time"]
+        direction TB
+        A["User uploads<br/>one or more PDFs"] --> B{"Size up to 20 MB<br/>and %PDF- signature?"}
+        B -->|"no"| B1["Reject that file<br/>with a clear message"]
+        B -->|"yes"| C["Save with UUID name<br/>create job (queued)<br/>enqueue job id"]
+    end
+
+    subgraph workerS["Worker: for each file"]
+        direction TB
+        D["Open PDF<br/>with PyMuPDF"] --> E{"Encrypted<br/>or corrupt?"}
+        E -->|"yes"| E1["File fails with<br/>a clear message"]
+        E -->|"no"| F{"Usable text<br/>layer?"}
+        F -->|"yes"| G["Text blocks + coordinates<br/>1- or 2-column order<br/>pdfplumber tables"]
+        F -->|"no: scanned"| H["Render page image<br/>OCR with Tesseract<br/>parsed_with_ocr = true"]
+        H -->|"OCR fails"| H1["Flag as scanned<br/>resume"]
+        G --> I["Detect sections<br/>extract fields"]
+        H --> I
+        I --> J["Extract and<br/>normalize skills"]
+        J --> K["Validate (Pydantic)<br/>upsert candidate<br/>log + progress"]
+    end
+
+    apiS -->|"stored files"| workerS
