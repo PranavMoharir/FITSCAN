@@ -1,6 +1,6 @@
 """Celery task entry points (LLD §5.5). Tasks are thin: claim the job, call the domain code, finish.
 
-`crawl` and `resume` exist; `match` is added in a later phase.
+Three tasks: `crawl`, `resume` and `match`.
 """
 
 import logging
@@ -21,6 +21,10 @@ from app.crawler.pipeline import BuiltRecord, SaveResult, save_records
 from app.crawler.rate_limiter import RateLimiter
 from app.db.session import session_scope
 from app.extractors.registry import get_registry
+from app.matching.engine import MatchRow, load_inputs, save_matches, score_candidate
+from app.matching.explanation import display
+from app.matching.scoring import Weights
+from app.matching.tfidf import TextSimilarity
 from app.models import BackgroundJob
 from app.resumes.pipeline import FileFailed, file_sha256, find_by_file, parse_resume, save_candidate
 from app.resumes.validation import read_source_file, stored_name
@@ -31,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 CRAWL_SOFT_TIME_LIMIT_SECONDS = 3600  # a hung crawl is stopped after an hour; partial results are kept
 RESUME_SOFT_TIME_LIMIT_SECONDS = 3600  # the same for a resume job; saved candidates are kept
+MATCH_SOFT_TIME_LIMIT_SECONDS = 3600  # a match run that is stopped saves nothing: the previous matches stay
 
 
 class JobRun:
@@ -334,3 +339,116 @@ def run_resume_job(job_id: uuid.UUID) -> str:
 def resume(background_job_id: str) -> str:
     """The message carries only the job ID (ADR-004): file names and paths are read from PostgreSQL."""
     return run_resume_job(uuid.UUID(background_job_id))
+
+
+# --- Matching (LLD Part 7) -------------------------------------------------------------------------
+#
+# One item = one candidate scored against every job. Nothing is written to `matches` until all
+# candidates are scored; then all rows are replaced in one transaction. A cancelled, failed or
+# stopped run therefore leaves the previous results exactly as they were (LLD §5.7, §7.9).
+# Log lines name candidates by the first 8 characters of their ID, never by name.
+
+
+def _plural(count: int, word: str, plural: str | None = None) -> str:
+    return f"{count} {word if count == 1 else plural or word + 's'}"
+
+
+def score_all(run: JobRun, jobs, candidates, weights: Weights) -> tuple[list[MatchRow], int, int]:
+    """Score every candidate against every job. Returns (rows, candidates succeeded, candidates failed)."""
+    similarity = TextSimilarity([job.text for job in jobs], [candidate.text for candidate in candidates])
+    run.log("INFO", f"Text similarity (TF-IDF, used only to order equal scores) fitted on "
+                    f"{similarity.document_count} texts, {similarity.vocabulary_size} terms.")
+    rows: list[MatchRow] = []
+    succeeded = failed = 0
+    for index, candidate in enumerate(candidates):
+        prefix = f"Candidate {str(candidate.candidate_id)[:8]}"
+        try:
+            scored = score_candidate(candidate, jobs, similarity.for_candidate(index), weights)
+            rows.extend(scored)
+            succeeded += 1
+            best = max(row.score for row in scored)
+            run.log("DEBUG", f"{prefix}: scored against {_plural(len(scored), 'job')} (best score {display(best):.2f}).",
+                    candidate_id=str(candidate.candidate_id))
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:  # one bad candidate never stops the others (LLD §5.5)
+            failed += 1
+            logger.error("Match job %s: candidate %s failed: %s", run.job_id, candidate.candidate_id, safe_traceback(exc))
+            run.log("ERROR", f"{prefix}: scoring failed ({type(exc).__name__}); it has no matches in this run.",
+                    candidate_id=str(candidate.candidate_id))
+        if run.item_done(index + 1, succeeded, failed) or run.not_running:
+            break
+    return rows, succeeded, failed
+
+
+def run_match_job(job_id: uuid.UUID) -> str:
+    """Recompute all matches. Returns the final status ("not-claimed" if the job is not queued)."""
+    with session_scope() as session:
+        if not progress.claim(session, job_id):
+            logger.info("Match job %s is not queued (cancelled, unknown or already taken); nothing to do", job_id)
+            return "not-claimed"
+
+    run = JobRun(job_id, total=None)
+    try:
+        weights = Weights.from_settings(get_settings().match_weights)
+        with session_scope() as session:
+            jobs, candidates = load_inputs(session)
+        run.total = len(candidates)
+        if not candidates or not jobs:
+            message = ("No candidates to match: upload resumes first." if not candidates
+                       else "No jobs to match: run a crawl first.")
+            run.log("ERROR", message + " The previous matches are unchanged.")
+            run.finish("failed", message, progress_total=len(candidates))
+            return "failed"
+        no_skills = sum(1 for job in jobs if job.profile.has_no_skills)
+        run.log("INFO", f"Matching started: {_plural(len(candidates), 'candidate')} × {_plural(len(jobs), 'job')} "
+                        f"({len(candidates) * len(jobs)} pairs).")
+        if no_skills:
+            max_without_skills = display(float(weights.experience + weights.location))
+            run.log("INFO", f"{no_skills} of {len(jobs)} jobs have no identified skills: they score R = 0 and N = 0, "
+                            f"so at most {max_without_skills:g} points.", jobs_without_skills=no_skills)
+
+        rows, succeeded, failed = score_all(run, jobs, candidates, weights)
+        if run.not_running:
+            logger.warning("Match job %s was ended elsewhere while running; its state is left unchanged", job_id)
+            return "not-running"
+        if run.cancel_seen:
+            run.log("INFO", f"Cancelled by user after {succeeded + failed} items. The previous matches are unchanged.")
+            run.finish("cancelled")
+            return "cancelled"
+        if succeeded == 0:
+            message = f"All {_plural(failed, 'candidate')} failed."
+            run.log("ERROR", message + " The previous matches are unchanged.")
+            run.finish("failed", message)
+            return "failed"
+
+        run.heartbeat()  # just before the one long step that does not end an item (LLD §5.8)
+        if run.not_running:
+            logger.warning("Match job %s was ended elsewhere before saving; nothing was saved", job_id)
+            return "not-running"
+        with session_scope() as session:
+            computed_at = save_matches(session, rows)
+        run.log("INFO", f"Saved {_plural(len(rows), 'match', 'matches')} for {_plural(succeeded, 'candidate')}"
+                        f"{f' ({failed} failed)' if failed else ''}; computed at {computed_at.isoformat()}.",
+                matches=len(rows), candidates_failed=failed)
+        run.finish("completed")
+        return "completed"
+    except SoftTimeLimitExceeded:
+        run.log("ERROR", "Time limit exceeded; the match run was stopped. The previous matches are unchanged.")
+        run.finish("failed", "Time limit exceeded.")
+        return "failed"
+    except Exception as exc:  # outside the per-candidate boundary, e.g. the database went away
+        logger.error("Match job %s failed: %s", job_id, safe_traceback(exc))
+        message = f"Unexpected error in the match run ({type(exc).__name__}). The previous matches are unchanged."
+        try:
+            run.log("ERROR", message)
+            run.finish("failed", message)
+        except Exception:
+            logger.error("Could not record the failure of %s; the stale-job check will mark it", job_id)
+        return "failed"
+
+
+@celery_app.task(name="match", soft_time_limit=MATCH_SOFT_TIME_LIMIT_SECONDS, time_limit=MATCH_SOFT_TIME_LIMIT_SECONDS + 60)
+def match(background_job_id: str) -> str:
+    """The message carries only the job ID (ADR-004)."""
+    return run_match_job(uuid.UUID(background_job_id))

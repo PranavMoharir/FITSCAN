@@ -2,7 +2,8 @@
 #   api     FastAPI + Uvicorn; applies database migrations before serving. No PDF, OCR or
 #           browser libraries: the API only checks the %PDF- signature and size of uploads.
 #   worker  Celery worker, plus Playwright with headless Chromium for JavaScript pages,
-#           PyMuPDF and pdfplumber for PDFs, and Tesseract for scanned resumes
+#           PyMuPDF and pdfplumber for PDFs, Tesseract for scanned resumes, and scikit-learn
+#           for the TF-IDF tie-breaker of the match run
 # Build one target with:  docker build --target api -t fitscan-api .
 #
 # Slow layers (packages, browser) come before the application code, so a code change only
@@ -45,7 +46,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 ENV OMP_THREAD_LIMIT=1
-# The worker-only Python packages (Playwright, PyMuPDF, pdfplumber, pytesseract, Pillow) and
+# The worker-only Python packages (Playwright, PyMuPDF, pdfplumber, pytesseract, Pillow, scikit-learn) and
 # headless Chromium with its system libraries.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['project']['optional-dependencies']['worker']))" > /tmp/worker-requirements.txt \

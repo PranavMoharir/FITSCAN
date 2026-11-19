@@ -1025,11 +1025,12 @@ City normalization is case-insensitive, trims whitespace and compares the city p
 
 | Case | Rule | Reason |
 |---|---|---|
-| Job has no nice-to-have skills (\|N\| = 0) | N_ratio = 1 (full 15 points) | The candidate is missing none of the job's nice-to-haves. Without this, a perfect candidate for such a job could score at most 85. **[Decision]** |
-| Job has no required skills (\|R\| = 0) | R_ratio = 0, and the explanation states "no required skills could be identified for this job" | An empty required list almost always means extraction failed, not that the job requires nothing. Awarding 70 points would push such jobs to the top of every candidate's list. **[Decision]** This rule is deliberately asymmetric with the nice-to-have rule. **[Open]** Review it during the 5-candidate hand check. |
+| Job has required skills but no nice-to-have skills (\|R\| > 0, \|N\| = 0) | N_ratio = 1 (full 15 points) | The candidate is missing none of the job's nice-to-haves. Without this, a perfect candidate for such a job could score at most 85. Consequence: every candidate gets these 15 points, even one who has none of the required skills (see "The N_ratio = 1 rule" below). **[Decision]**, confirmed after the hand check. |
+| Job has nice-to-have skills but no required skills (\|R\| = 0, \|N\| > 0) | R_ratio = 0, and the explanation states "no required skills could be identified for this job"; N_ratio as usual | An empty required list almost always means extraction failed, not that the job requires nothing. Awarding 70 points would push such jobs to the top of every candidate's list. **[Decision]** This rule is deliberately asymmetric with the nice-to-have rule. |
+| Job has no skills at all (\|R\| = 0 and \|N\| = 0) | R_ratio = 0 **and** N_ratio = 0, and the explanation states "no required or nice-to-have skills could be identified for this job". The job is still scored and stored; it scores at most 15 (experience and location). | With N_ratio = 1, such a job got 15 points for nice-to-have skills it never listed, so 25–30 with experience and location, which beat real partial matches (1 of 4 required skills in another city scores 27.5). After the recrawl of 19 November 2026, 90 of the 108 crawled jobs had no skills. **[Decision]**: resolves open question O2 (Section 20.3). |
 | Job has no `min_experience_years` | E = 1 | The brief marks the field "if found". A missing requirement is not held against the candidate. |
 | Candidate `years_experience` unknown and the job has a minimum | E = 0, and the explanation says "experience not found in resume" | Conservative. Avoids rewarding missing data. |
-| Candidate has no skills | R_ratio = 0, and N_ratio = 0 unless \|N\| = 0 | Follows from the formula. |
+| Candidate has no skills | R_ratio = 0, and N_ratio = 0 unless the job has required skills but \|N\| = 0 | Follows from the formula and the rows above. |
 | Candidate or job city unknown and job not remote | L = 0 | The fit cannot be confirmed. |
 | Duplicate skills in input | Removed (sets) | A skill counts once. |
 | Score precision | Computed exactly, clamped to [0, 100] and stored unrounded. Rounded to 2 decimals **only for display**. Ranking always uses the unrounded value. **[Decision]** | Neither rounding nor floating-point error may change a ranking. See "Score precision" below. |
@@ -1040,6 +1041,14 @@ City normalization is case-insensitive, trims whitespace and compares the city p
 - **Display.** Scores are rounded to 2 decimals only when shown: in API responses, the UI, explanations and exports. Sorting, `rank` and the top-10 cut always use the stored value (Section 10.7).
 - **Why not round before ranking.** Rounding can make two different scores equal (for example, 80.004 and 80.001 both become 80.00). The tie-breaker, not the score, would then decide their order. This needs unusual combinations of skill counts and experience values, so it is rare: it changed no top-10 list in the benchmark (Section 10.10). It is still possible, and avoiding it costs nothing.
 - **Why not plain floating point.** Plain floats give mathematically equal scores slightly different values, so floating-point error, not the tie-breaker, decides their order. Take the worked-example candidate (Section 10.9) and a second job where they have 2 of 3 required skills, with no nice-to-have list, no minimum experience and a different city. Both jobs score exactly 71⅔, but plain floats give 71.66666666666667 for the worked-example job and 71.66666666666666 for the second job. In the benchmark, plain floats changed the top 10 of 1 candidate in 100; exact computation changed none.
+
+**The N_ratio = 1 rule [Decision].** A job that lists required skills but no nice-to-have skills gives every candidate the full 15 nice-to-have points, including a candidate who has none of its required skills. Such a candidate scores 0 + 15 + E + L, for example 25 with no minimum experience in another city. For a job that lists nice-to-have skills the candidate lacks, the same candidate scores 0 + 0 + E + L.
+
+In the 5-candidate hand check (README), this put two jobs where the data analyst has 0 of 2 and 0 of 5 required skills at 25.00, at ranks 9 and 10. A job in his own city that lists nice-to-have skills, and that he does not match either, scored 15.00. The rule was confirmed on 19 November 2026:
+
+- without it, a perfect candidate for such a job could score at most 85;
+- the required ratio, worth 70 points, still decides the ranking, so the effect only reorders weak matches at the bottom of a list;
+- the explanation states it ("The job lists no nice-to-have skills (15.00 pts).").
 
 ### 10.6 Score Normalization
 
@@ -1564,9 +1573,9 @@ HTTP/1.1 202 Accepted
       "company": "Acme Analytics",
       "score": 71.67,
       "matched_skills": [
-        { "skill": "Python", "level": "required" },
         { "skill": "FastAPI", "level": "required" },
         { "skill": "PostgreSQL", "level": "required" },
+        { "skill": "Python", "level": "required" },
         { "skill": "Redis", "level": "nice_to_have" }
       ],
       "missing_skills": [
@@ -1574,10 +1583,11 @@ HTTP/1.1 202 Accepted
         { "skill": "Kubernetes", "level": "nice_to_have" }
       ],
       "breakdown": {
-        "required":     { "matched": 3, "total": 4, "points": 52.5 },
-        "nice_to_have": { "matched": 1, "total": 2, "points": 7.5 },
-        "experience":   { "candidate_years": 2, "minimum": 3, "fit": 0.667, "points": 6.67 },
-        "location":     { "candidate_city": "Pune", "job_location": "Pune, India", "fit": 1, "points": 5.0 }
+        "required":     { "matched": 3, "total": 4, "ratio": 0.75, "points": 52.5, "rule": "ratio" },
+        "nice_to_have": { "matched": 1, "total": 2, "ratio": 0.5, "points": 7.5, "rule": "ratio" },
+        "experience":   { "candidate_years": 2.0, "minimum": 3.0, "fit": 0.667, "points": 6.67, "rule": "ratio" },
+        "location":     { "candidate_city": "Pune", "job_location": "Pune, India", "job_city": "Pune",
+                          "fit": 1.0, "points": 5.0, "rule": "same_city" }
       },
       "text_similarity": 0.42,
       "explanation": "Score 71.67/100. Has 3 of 4 required skills (52.50 pts; missing Docker). Has 1 of 2 nice-to-have skills (7.50 pts; missing Kubernetes). 2 years of experience against a 3-year minimum (6.67 pts). Same city, Pune (5.00 pts)."
@@ -1586,7 +1596,14 @@ HTTP/1.1 202 Accepted
 }
 ```
 
-`score` and the points in `breakdown` are 2-decimal display values. The order of `items` and each `rank` come from the full-precision score and the tie-breakers (Section 10.7).
+- **Display values.** `score`, the points in `breakdown` and `text_similarity` are rounded to 2 decimals, ratios and fits to 3, half up. The order of `items` and each `rank` come from the full-precision score and the tie-breakers (Section 10.7); rounding happens afterwards.
+- **Skill lists.** Required skills come first, then nice-to-have skills, each in alphabetical order.
+- **`rule`.** It says why a component got its value:
+  - skills: `ratio`, `none_listed` (N_ratio = 1), `no_required_identified` or `no_skills_identified`;
+  - experience: `ratio`, `no_minimum` or `years_unknown`;
+  - location: `remote`, `same_city`, `different_city`, `candidate_city_unknown` or `job_city_unknown`.
+- **`job_city`.** The city found in `job_location`, as it was compared.
+- **Errors and empty results.** An unknown ID gives 404, and a `limit` outside 1–10 gives 422. A candidate or job that no match run has included yet gets `"items": []` and `"computed_at": null`.
 
 **`GET /jobs/{id}/matches?limit=10`** returns the same structure with candidate details (`candidate_id`, `name`, `current_title`, `city`) in place of job details.
 
@@ -2018,7 +2035,7 @@ The rationale for each decision is expanded in `ARCHITECTURE_DECISIONS.md`, wher
 | # | Question | Current position |
 |---|---|---|
 | O1 | Final job and resume data sources | Mock site plus one real static site; recorded in `DATA_SOURCES.md`. |
-| O2 | Is R_ratio = 0 for jobs with no required skills the right choice? | Keep it, and review it during the 5-candidate hand check. |
+| O2 | Is R_ratio = 0 for jobs with no required skills the right choice? | **Resolved on 19 November 2026:** R_ratio = 0 stays for a job without required skills. For a job with no skills at all (\|R\| = 0 and \|N\| = 0), N_ratio is 0 as well, so the job scores at most 15 (experience and location); it is still scored and stored. N_ratio = 1 stays for a job that has required skills but no nice-to-have list. See Section 10.5 and ADR-017. |
 | O3 | Accuracy of ambiguous short skill aliases ("Go", "R", "C") | Context rules and negative test cases; measured on the labelled examples (Section 8.8) and adjusted. |
 | O4 | Exact heartbeat staleness threshold and polling interval | **Resolved in v1.2:** heartbeat timeout `JOB_HEARTBEAT_TIMEOUT_SECONDS` = 600 (Section 13.7); UI polling every 2 seconds, `VITE_POLL_INTERVAL_MS` = 2000 (Section 8.1). Configuration values, not performance targets. |
 | O5 | Detecting jobs stuck in `queued` after broker data loss | **Resolved in v1.2:** a job queued longer than `JOB_QUEUED_TIMEOUT_SECONDS` (600) while no job has written a heartbeat is marked `failed`; no automatic re-sending (Sections 13.7, 16.4). |

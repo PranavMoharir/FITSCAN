@@ -7,7 +7,7 @@ Start a worker from the `backend/` folder:
 
 Redis is only the message broker. Task status, progress, logs and results are stored in
 PostgreSQL (ADR-003), so no Celery result backend is configured.
-Tasks live in `app/worker/tasks.py` (crawl and resume so far; match in a later phase).
+Tasks live in `app/worker/tasks.py`: crawl, resume and match.
 """
 
 import logging

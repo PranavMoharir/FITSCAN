@@ -174,19 +174,23 @@ All records have status **Proposed**. They become **Accepted** once implementati
 
 - **Context.** The formula is undefined for empty skill lists, and the brief only says "scaled down below" the minimum experience. It also does not say how precisely scores are compared when ranking.
 - **Decision.**
-  - Nice-to-have list empty: ratio 1.
-  - Required list empty: ratio 0, flagged in the explanation.
+  - Nice-to-have list empty, required skills present: ratio 1.
+  - Required list empty, nice-to-have skills present: required ratio 0, flagged in the explanation; nice-to-have ratio as usual.
+  - No skills at all (both lists empty): required ratio 0 **and** nice-to-have ratio 0, flagged in the explanation. The job scores at most 15 (experience and location). This settles HLD open question O2 (decided 19 November 2026).
   - No minimum experience: experience fit 1.
   - Unknown candidate experience with a minimum set: fit 0.
   - Experience fit is linear: `min(1, years / minimum)`.
   - Location fit is 1 for remote jobs or the same normalized city, otherwise 0.
   - Score precision: the score is computed exactly (Python `fractions.Fraction`) and stored unrounded as `DOUBLE PRECISION`. It is rounded to 2 decimals only for display: API responses, UI, explanations and exports. Ranking, `rank` and the top-10 cut use the unrounded value.
 - **Alternatives considered.**
+  - For a job with no skills at all, keeping nice-to-have ratio 1 (the rule for an empty nice-to-have list). Such a job then got 15 points for nice-to-have skills it never listed, plus 10 for experience when it states no minimum: 25 points, or 30 when remote or in the candidate's city. That beat real partial matches, for example 1 of 4 required skills in another city (27.5). After the 19 November 2026 recrawl, 90 of the 108 crawled jobs had no skills, so these jobs would have filled every candidate's top 10.
+  - Leaving jobs without skills out of matching: it breaks "every candidate against every job" and can leave fewer than 10 results. They are still scored and stored.
   - Storing the score rounded to 2 decimals (`NUMERIC(5,2)`): rounding can make different scores equal, so the tie-breaker would decide their order.
   - Plain floating-point arithmetic: it gives mathematically equal scores slightly different values, so floating-point error would decide their order. For example, two scores of exactly 71⅔ come out as 71.66666666666667 and 71.66666666666666.
 - **Consequences.**
   - Perfect candidates reach 100.
-  - Jobs whose skills could not be extracted do not flood every candidate's top 10. The required-empty rule is reviewed during the README hand check (HLD open question O2).
+  - Jobs whose skills could not be extracted do not flood every candidate's top 10: they get no skill points at all, so they score at most 15 and rank below every job worth more than 15 points to the candidate. The rule was checked in the README's 5-candidate hand check (HLD open question O2, now decided).
+  - The nice-to-have ratio of 1 for a job with required skills but no nice-to-have list also goes to a candidate who has none of the required skills: 0 + 15 + experience + location. In the hand check, this put two such jobs at a data analyst's ranks 9 and 10 (25.00). A job in his own city that lists nice-to-have skills, which he does not match either, scored 15.00. The rule is kept (confirmed 19 November 2026): the required ratio, worth 70 points, still decides the ranking, so only weak matches at the bottom of a list are reordered. The explanation states it ("The job lists no nice-to-have skills").
   - Neither rounding nor floating-point error changes a ranking, and exactly equal scores always reach the tie-breaker. In a synthetic benchmark, plain floats changed the top 10 of 1 candidate in 100; exact scores changed none (detailed HLD Section 10.10).
   - Exact arithmetic is about 12× slower per pair than plain floats (0.63 s for 100,000 pairs in that benchmark). This is acceptable for a background job at assignment scale.
 

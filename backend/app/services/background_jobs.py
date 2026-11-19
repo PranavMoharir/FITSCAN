@@ -1,6 +1,6 @@
 """Background-job control for the API: create, list, read, logs, cancel, stale-job checks (LLD §5.4-5.8).
 
-Creating a job (crawl or resume): insert the row as `queued` and COMMIT first (so the worker can
+Creating a job (crawl, resume or match): insert the row as `queued` and COMMIT first (so the worker can
 always find it), then publish a Celery message that carries only the job ID (ADR-004). If
 publishing fails, the job is marked `failed` ("could not be queued") and the API answers 503.
 """
@@ -18,7 +18,7 @@ from app.crawler.ssrf import BlockedHostError, UnresolvableHostError, check_host
 from app.crawler.urls import host_of, is_allowed_host, normalize_url
 from app.errors import AppError
 from app.extractors.registry import get_registry
-from app.models import BackgroundJob, BackgroundJobLog
+from app.models import BackgroundJob, BackgroundJobLog, Candidate
 from app.resumes.validation import AcceptedFile, IncomingFile, RejectedFile, delete_stored, save_upload, stored_name
 from app.schemas.background_job import CrawlRequest
 from app.worker.celery_app import celery_app
@@ -151,6 +151,16 @@ def create_resume_job(session: Session, files: list[IncomingFile]) -> tuple[Back
         raise
     logger.info("Resume job %s queued: %d files accepted, %d rejected", job.background_job_id, len(accepted), len(rejected))
     return job, accepted, rejected
+
+
+def create_match_job(session: Session) -> BackgroundJob:
+    """Queue a run that scores every candidate against every job (LLD §7.1). It has no parameters.
+
+    progress_total starts as today's number of candidates; the worker sets it again when it
+    loads them. With no candidates or no jobs the job is still created and fails with that reason.
+    """
+    candidates = session.execute(select(func.count()).select_from(Candidate)).scalar_one()
+    return _enqueue(session, BackgroundJob(type="match", status="queued", params=None, progress_total=candidates))
 
 
 # --- Read --------------------------------------------------------------------------------------------

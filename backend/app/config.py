@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     ocr_min_text_chars: int = Field(default=25, ge=0)  # a page with fewer characters and an image counts as scanned
     ocr_timeout_seconds: float = Field(default=60.0, gt=0)  # per page
 
-    # Matching (used once the matching engine is implemented)
+    # Matching (LLD §7.4): weights of the required, nice-to-have, experience and location components
     match_weights: Annotated[MatchWeights, NoDecode] = MatchWeights(required=70, nice=15, experience=10, location=5)
 
     # Stale background-job detection (LLD §5.8)

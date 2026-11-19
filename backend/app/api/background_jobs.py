@@ -1,6 +1,6 @@
 """/background-jobs: create, list, read, cancel, logs (LLD §4.5, HLD §12.3).
 
-Crawl and resume jobs can be created; match runs come in a later phase.
+Crawl, resume and match jobs can be created.
 Routers stay thin: validate the input, call the service, return a schema.
 """
 
@@ -66,6 +66,17 @@ def create_resume(
         accepted_files=[AcceptedFileInfo(index=a.index, upload_id=a.upload_id, size_bytes=a.size_bytes) for a in accepted],
         rejected_files=[RejectedFileInfo(**asdict(r)) for r in rejected],
     )
+
+
+@router.post(
+    "/match", status_code=202, response_model=BackgroundJobCreated,
+    responses={503: {"model": ErrorResponse, "description": "Broker unavailable"}},
+    summary="Recompute all matches",
+    description="Scores every candidate against every job and replaces all stored matches when it finishes. "
+                "Until then, and if it is cancelled or fails, the previous matches stay unchanged.",
+)
+def create_match(db: Session = Depends(get_db)) -> BackgroundJobCreated:
+    return BackgroundJobCreated.of(service.create_match_job(db))
 
 
 @router.get("", response_model=BackgroundJobList, responses={422: {"model": ErrorResponse}}, summary="List background jobs")

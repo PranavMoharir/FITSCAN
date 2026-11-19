@@ -6,22 +6,23 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 
 ## Status
 
-**Phases 1–4 done:** project setup, database, background jobs with the job crawler, and resume upload with PDF parsing and OCR. Crawls and resume parsing run in the Celery worker; their status, progress, logs, jobs and candidates are stored in PostgreSQL.
+**Phases 1–5 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, and the matching engine. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
 
 | Works now | Not built yet (later phases) |
 |---|---|
-| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | Matching engine and match endpoints |
-| The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | Search and export endpoints, `GET /skills`, `GET /candidates` |
-| Background jobs: create a crawl or a resume job, list, detail, logs, cancel; heartbeats and stale-job checks | UI pages (background jobs, jobs, candidates, upload form, detail pages) |
-| Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | `samples/`, `DATA_SOURCES.md`, `AI_USAGE.md` |
+| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | Search and export endpoints, `GET /skills`, `GET /candidates`, `GET /jobs`, the detail routes |
+| The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | UI pages (background jobs, jobs, candidates, upload form, detail pages) |
+| Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | `samples/`, `DATA_SOURCES.md`, `AI_USAGE.md` |
+| Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | |
 | Extractors: Fake Python Jobs, the mock site (static and JavaScript), generic JSON-LD | |
 | Job validation, de-duplication (upsert by `dedup_key`), skills taxonomy and job skills | |
 | Resume upload: size and `%PDF-` checks per file, UUID storage, one background job per upload | |
 | PDF parsing: one- and two-column layouts, tables, garbled text, OCR of scanned pages (Tesseract) | |
 | Candidate fields, skills, validation, de-duplication (same file skipped, same email updated) | |
+| Matching: every candidate against every job, exact scores, explanations, TF-IDF tie-breaker; top 10 in both directions | |
 | `GET /health`, OpenAPI docs at `/docs`, one error envelope for every error | |
 
-The sections the brief asks for (how matching works, the 5-candidate hand check, known limitations, time spent) are added as those features are built.
+The sections the brief asks for that are not here yet (known limitations, time spent) are added as the remaining features are built.
 
 ## Quick start (Docker)
 
@@ -93,13 +94,30 @@ docker compose exec api python -m app.services.upload_retention --delete   # del
 
 Anything else in the folder is never touched. Running the command again is harmless. Details: [LLD §6.10](docs/LLD/06_Resume_Parsing_and_Skill_Extraction.md).
 
+### Compute matches
+
+After crawling jobs and uploading resumes, score every candidate against every job:
+
+```bash
+curl -X POST http://localhost:8000/background-jobs/match
+```
+
+The answer is `202 Accepted` with the `match` job; follow it like a crawl (one progress item per candidate). When it completes, it has replaced all stored matches at once; until then, and if it is cancelled or fails, the previous matches stay as they were. Then:
+
+| Request | Shows |
+|---|---|
+| `GET /candidates/{id}/matches?limit=10` | A candidate's top jobs (default and maximum 10) |
+| `GET /jobs/{id}/matches?limit=10` | A job's top candidates |
+
+Each item has its `rank`, the `score` (2 decimals), `matched_skills` and `missing_skills` (each `{skill, level}`), the `breakdown` of the four components, `text_similarity` and the `explanation`. `computed_at` says when the matches were computed. Matches are not recomputed automatically: run the job again after new crawls or uploads.
+
 ### Services
 
 | Service | Role | Host port |
 |---|---|---|
 | `frontend` | Serves the built React app | 5173 |
 | `api` | FastAPI on Uvicorn; applies database migrations, then serves | 8000 |
-| `worker` | Celery worker for crawl and resume tasks (match later), 2 processes; includes headless Chromium, PyMuPDF, pdfplumber and Tesseract OCR | none |
+| `worker` | Celery worker for crawl, resume and match tasks, 2 processes; includes headless Chromium, PyMuPDF, pdfplumber, Tesseract OCR and scikit-learn | none |
 | `db` | PostgreSQL 17 (volume `pgdata`) | none |
 | `redis` | Redis, the Celery message broker | none |
 | `mock-site` | Optional demo job site (`mock-site/`): static pages, one JavaScript page, its own robots.txt; `http://mock-site:8080` inside Compose | none |
@@ -137,6 +155,77 @@ An upload is a background job, like a crawl (LLD Part 6).
 - **Saving.** A new resume with the same email (ignoring case) as an existing candidate replaces that candidate's parsed fields and skills; otherwise a new candidate is created.
 - **Privacy.** Log lines identify files by the first 8 characters of their upload ID and give page numbers, but never contain file names, names, contact details or resume text. Neither do the job's parameters, Redis messages or `GET /background-jobs/{id}`. Error messages and tracebacks in the server log are reduced to the exception type and code location, and SQL parameters are never shown.
 
+## How matching works
+
+A match run is a background job (LLD Part 7). It scores **every candidate against every job**, one pair at a time, and stores every pair in `matches`.
+
+```text
+score = 70 × R + 15 × N + 10 × E + 5 × L          (weights: MATCH_WEIGHTS, adding up to 100)
+```
+
+| Component | Value between 0 and 1 |
+|---|---|
+| **R**, required skills | required skills the candidate has ÷ the job's required skills |
+| **N**, nice-to-have skills | nice-to-have skills the candidate has ÷ the job's nice-to-have skills |
+| **E**, experience | `min(1, candidate's years ÷ job's minimum)`: linear below the minimum |
+| **L**, location | 1 if the job is remote or in the candidate's city, otherwise 0 |
+
+Skills are compared by their canonical names from the taxonomy, so "ReactJS" on a resume matches "React" in a job; a candidate's other skills neither add nor remove points. Cities go through the same normalizer as resume parsing, so "Bangalore, Karnataka" and "Bengaluru" are the same city; a city that is not in `cities.json` is compared by the text before the first comma. "Hybrid" jobs count as city-based.
+
+**Edge cases** (ADR-017):
+
+| Case | Rule |
+|---|---|
+| The job has required skills but no nice-to-have list | N = 1 (the candidate misses none of them). This gives 15 points even to a candidate who has none of the required skills; see the hand check below. |
+| The job has nice-to-have skills but no required ones | R = 0, noted in the explanation |
+| **The job has no skills at all** (extraction found none) | R = 0 **and** N = 0, so it scores at most 15 (experience and location). With N = 1 such jobs got 25–30 free points and outranked real partial matches. They are still scored and stored. |
+| The job has no minimum experience | E = 1 |
+| The job has a minimum but the resume shows no experience | E = 0 ("experience not found in resume") |
+| The candidate's or the job's city is unknown and the job is not remote | L = 0 |
+
+**Exact scores.** The score is computed with exact fractions and stored unrounded (`DOUBLE PRECISION`): two different scores never become equal, and two equal scores are stored identically. It is rounded to 2 decimals only for display, after ranking.
+
+**Ranking.** Top 10 by score; exactly equal scores are ordered by the TF-IDF cosine similarity of the job description and the resume text (scikit-learn, worker only), then by the required-skill ratio, then by ID. Text similarity is never part of the score.
+
+**Explanation.** Every match stores its matched and missing skills (each with its level), a breakdown of the four components (counts, ratios, points and the rule that applied), and a sentence generated from that breakdown:
+
+> Score 71.67/100. Has 3 of 4 required skills (52.50 pts; missing Docker). Has 1 of 2 nice-to-have skills (7.50 pts; missing Kubernetes). 2 years of experience against a 3-year minimum (6.67 pts). Same city, Pune (5.00 pts).
+
+**The run.** It loads all jobs and candidates, fits TF-IDF once, then scores one candidate (against all jobs) per progress step; cancellation is checked after each candidate. Nothing is written until every candidate is scored. Then, in one transaction, all old matches are deleted and the new ones inserted with one `computed_at`, so readers see either the complete old result or the complete new one. A cancelled or failed run leaves the previous matches unchanged. Log lines name candidates by the first 8 characters of their ID only.
+
+## Matching hand check (5 candidates)
+
+Done on 19 November 2026 on the Docker stack. The data was 108 crawled jobs: 100 from Fake Python Jobs after a full crawl (101 pages), and 8 from the mock site. 18 of them have extracted skills; the other 90 have none. The 5 candidates were parsed from synthetic resumes (`tests/resume_pdfs.py`; the people are invented), and one match run scored 540 pairs. For each candidate, the top 3 and one job without skills were calculated by hand from the database rows (skills, years, city) and compared with the stored score and the API. R = required skills matched / required, N = nice-to-have matched / nice-to-have.
+
+| Candidate (city, years) | Rank: job (location) | Hand calculation: R + N + E + L | Stored / shown |
+|---|---|---|---|
+| Asha Verma, Senior Backend Engineer (Pune, 6) | 1: Go Backend Engineer (remote) | 70·3/4 + 15·1/1 + 10 (6 ≥ 5) + 5 (remote) = 82.5 | 82.5 / 82.50 |
+| | 2: Backend Python Developer (Pune) | 70·3/5 + 15·3/3 + 10 (6 ≥ 3) + 5 (same city) = 72 | 72 / 72.00 |
+| | 3: Software Developer (Python) (Martinezburgh, AE) | 70·1/4 + 15 (no nice-to-have list) + 10 (no minimum) + 0 = 42.5 | 42.5 / 42.50 |
+| Kiran Rao, Platform Engineer (Hyderabad, 9.5; resume read by OCR) | 1: Go Backend Engineer (remote) | 70·3/4 + 15·1/1 + 10 + 5 = 82.5 | 82.5 / 82.50 |
+| | 2: DevOps Engineer (Hyderabad) | 70·3/5 + 15·0/1 + 10 (9.5 ≥ 4) + 5 (same city) = 57 | 57 / 57.00 |
+| | 3: Backend Python Developer (Pune) | 70·2/5 + 15·3/3 + 10 + 0 = 53 | 53 / 53.00 |
+| Meera Iyer, Frontend Developer (Chennai, 4.3) | 1: Full Stack Developer (remote) | 70·2/4 + 15·1/2 + 10 (4.3 ≥ 3) + 5 = 57.5 | 57.5 / 57.50 |
+| | 2: Frontend Engineer (React) (Bengaluru) | 70·2/4 + 15·0/2 + 10 + 0 = 45 | 45 / 45.00 |
+| | 3: Software Developer (Python) (Martinezburgh, AE) | 70·1/4 + 15 + 10 + 0 = 42.5 | 42.5 / 42.50 |
+| Nikhil Joshi, QA Automation Engineer (Chennai, 3.5) | 1: QA Automation Engineer (Chennai, hybrid) | 70·3/3 + 15·1/1 + 10 (3.5 ≥ 2) + 5 (hybrid = city-based, same city) = 100 | 100 / 100.00 |
+| | 2: Software Developer (Python) (Martinezburgh, AE) | 70·4/4 + 15 + 10 + 0 = 95 | 95 / 95.00 |
+| | 3: Back-End Web Developer (Python, Django) (South Kimberly, AA) | 70·3/4 + 15 + 10 + 0 = 77.5 | 77.5 / 77.50 |
+| Rahul Mehta, Data Analyst (Bengaluru, 8.4) | 1: Data Analyst (remote) | 70·3/4 + 15·1/2 + 10 (8.4 ≥ 1) + 5 = 75 | 75 / 75.00 |
+| | 2: Machine Learning Intern (Pune) | 70·2/3 + 15·0/1 + 10 + 0 = 170/3 | 56.666666666666664 / 56.67 |
+| | 3: Software Developer (Python) (Martinezburgh, AE) | 70·1/4 + 15 + 10 + 0 = 42.5 | 42.5 / 42.50 |
+
+**Result:** all 15 top-3 scores, and 12 more pairs checked the same way (each candidate's job without skills, the tied and lower-ranked pairs below), equal the hand calculation, and every explanation states the same points. No discrepancy was found. The top 1–2 jobs make sense for every candidate: a backend engineer gets the backend jobs, the platform engineer gets the Go and DevOps jobs, the frontend developer gets the full-stack and React jobs, the QA engineer gets the QA job in his city (100), and the data analyst gets the data-analyst job. Rank 3 is often a weak Python-only match, because only 18 jobs have skills.
+
+**Jobs without skills (O2).** "Air broker" (West Colin, AP), like the other 89 jobs without skills, scores 0 + 0 + 10 (no minimum) + 0 (other city) = **10** for every candidate (stored 10, explanation "No required or nice-to-have skills could be identified for this job, so it gets no skill points"). None of the 90 appears in any candidate's top 10. With the old rule (N = 1) they would score 25, level with Rahul Mehta's ranks 9 and 10.
+
+**Exact ties.** Nikhil Joshi's ranks 4–6 all score exactly 215/3 (stored 71.66666666666667), from 4 of 6, 4 of 6 and 2 of 3 required skills. They are ordered by text similarity: 0.1153, 0.0762, 0.0378.
+
+**Observations:**
+- *A job with required skills but no nice-to-have list gives 15 points even when none of its required skills match.* This is the N = 1 rule, **kept** after this check (ADR-017, LLD §7.5): without it a perfect candidate for such a job could score at most 85, and the 70 points of the required ratio still decide the ranking. The Fake Python Jobs pages never list nice-to-have skills, so all 10 of those jobs with skills get this. Rahul Mehta's ranks 9–10 are "Python Programmer" jobs at 25.00 with 0 of 2 and 0 of 5 required skills. His own-city "Frontend Engineer (React)" job, where he also has no skills but which lists nice-to-haves, scores 15.00. Only the bottom of a top 10 is affected, and the explanation says why ("The job lists no nice-to-have skills (15.00 pts).").
+- *Fake Python Jobs descriptions are generated filler text.* A skill word in them is not a real requirement: one "Back-End Web Developer (Python, Django)" job requires CSS, Flask, HTML and Java, because those words occur in its text. Its towns are invented, so no candidate gets location points for those jobs.
+- *Titles do not produce skills.* Rahul Mehta misses "Data Analysis" for the Data Analyst job, because his resume says "Data Analyst" only as a title.
+
 ## Local development
 
 Run PostgreSQL and Redis in Docker, and the code from your machine, for fast reloads. Requires Python 3.12 and Node.js 24.
@@ -155,7 +244,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis
 ```bash
 python -m venv .venv
 .venv\Scripts\activate            # Windows (macOS/Linux: source .venv/bin/activate)
-pip install -e ".[dev,worker]"    # worker = Playwright, PyMuPDF, pdfplumber, pytesseract; then `playwright install chromium`
+pip install -e ".[dev,worker]"    # worker = Playwright, PyMuPDF, pdfplumber, pytesseract, scikit-learn; then `playwright install chromium`
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
@@ -184,7 +273,7 @@ cd backend && pytest            # unit tests, offline: no database, Redis or int
 cd frontend && npm run build    # TypeScript type check + production build
 ```
 
-The unit tests cover the crawler (BFS, normalization, robots.txt, rate limiting, retries, 429/5xx/4xx, redirects, SSRF), the extractors on saved pages in `tests/fixtures/html/`, skill extraction, job validation, and resume parsing: upload checks (signature, streamed size limit, names as data only), PDF opening (corrupt, encrypted, page limit), reading order of one- and two-column pages, tables, the garbled-text fallback, scanned-page detection and OCR failures, every candidate field (including overlapping employment dates against a fixed "today") and `CandidateRecord` validation. They never use the internet: pages come from `httpx.MockTransport`, DNS is faked, and resumes are synthetic PDFs generated by `tests/resume_pdfs.py` (invented people only; no real resume is used).
+The unit tests cover the crawler (BFS, normalization, robots.txt, rate limiting, retries, 429/5xx/4xx, redirects, SSRF), the extractors on saved pages in `tests/fixtures/html/`, skill extraction, job validation, and resume parsing: upload checks (signature, streamed size limit, names as data only), PDF opening (corrupt, encrypted, page limit), reading order of one- and two-column pages, tables, the garbled-text fallback, scanned-page detection and OCR failures, every candidate field (including overlapping employment dates against a fixed "today") and `CandidateRecord` validation, and matching: the worked example, every scoring edge case (including jobs without skills), experience and location rules (remote, hybrid, unknown and unlisted cities, Bangalore = Bengaluru), exact scores, display rounding, the explanation text against the breakdown, the TF-IDF tie-breaker, the ranking order and the four score-precision cases of LLD §9.7. They never use the internet: pages come from `httpx.MockTransport`, DNS is faked, and resumes are synthetic PDFs generated by `tests/resume_pdfs.py` (invented people only; no real resume is used).
 
 Skill extraction is measured on hand-labelled examples (LLD §6.9): job descriptions give precision 1.00 and recall 1.00; resumes give precision 1.00 and recall 0.95. The one known miss is "Swift" at the start of a sentence, which the ambiguous-word rule ignores outside a skill context.
 
@@ -194,7 +283,8 @@ Skill extraction is measured on hand-labelled examples (LLD §6.9): job descript
 - saving crawled jobs and candidates (new, duplicate file, same email);
 - the upload retention command against real jobs and candidates: dry run, `--delete` for every rule, and a second run that changes nothing;
 - a full crawl through the API, with Celery running the real `crawl` task in-process against the mock site;
-- a full resume upload through the API with the real `resume` task: accepted and rejected files, UUID storage, progress, logs, duplicates, same-email updates, cancellation between files, OCR, a broker outage, and a check that no log line contains names, contact details, file names or resume text.
+- a full resume upload through the API with the real `resume` task: accepted and rejected files, UUID storage, progress, logs, duplicates, same-email updates, cancellation between files, OCR, a broker outage, and a check that no log line contains names, contact details, file names or resume text;
+- a full match run through the API with the real `match` task: every pair stored with one `computed_at`, the edge cases in the database, reruns that replace every row, cancellation and failures that keep the previous matches, two runs saving at the same time, the heartbeat before the final write, no personal data in the logs, both top-10 routes (shape, limit, 404), the API order against the ranking rule on data with many ties, and the score-precision cases through PostgreSQL.
 
 They are skipped unless `TEST_DATABASE_URL` is set. With the dev override running (step 1 of *Local development*):
 
@@ -206,12 +296,14 @@ TEST_DATABASE_URL=postgresql+psycopg://app:change-me@127.0.0.1:5433/matching_tes
 
 On Windows PowerShell, set the variable first: `$env:TEST_DATABASE_URL = "postgresql+psycopg://…/matching_test"`. The tests drop and recreate the schema of that database, so its name must end in `_test`; any other name is refused.
 
-**OCR with the real Tesseract.** Two tests in `tests/unit/test_ocr.py` need the Tesseract program and are skipped without it. To run them in the worker image, which has it (from the repository root; `tests/` is mounted because the image does not contain it):
+**OCR with the real Tesseract, in the worker image.** Two tests in `tests/unit/test_ocr.py` need the Tesseract program and are skipped without it. The worker image has it, as well as the worker-only libraries (PyMuPDF, pdfplumber, scikit-learn). To run all unit tests there (from the repository root; `tests/` is mounted because the image does not contain it):
 
 ```bash
 docker compose run --rm --no-deps -v ./backend/tests:/app/tests:ro worker \
-  sh -c "pip install --user -q pytest==9.2.0 && python -m pytest -p no:cacheprovider tests/unit/test_ocr.py tests/unit/test_resume_pipeline.py"
+  sh -c "pip install --user -q pytest==9.2.0 && python -m pytest -p no:cacheprovider tests/unit"
 ```
+
+The container gets every variable of `.env` from Compose. The settings tests remove all of them first, so they check the built-in defaults wherever they run.
 
 ## Configuration
 
@@ -249,18 +341,18 @@ The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates 
 │   │   ├── main.py           # FastAPI app: routers, CORS, error handlers
 │   │   ├── config.py         # settings from environment variables
 │   │   ├── errors.py         # standard error envelope
-│   │   ├── api/              # routers: health, background_jobs; upload_limit (total upload size)
+│   │   ├── api/              # routers: health, background_jobs, jobs and candidates (match routes); upload_limit
 │   │   ├── schemas/          # Pydantic request/response models, JobRecord, CandidateRecord
 │   │   ├── db/               # engine, sessions, Base (constraint naming)
 │   │   ├── models/           # SQLAlchemy models: the eight tables of LLD Part 3
-│   │   ├── services/         # background-job control (crawl and resume jobs), stale-job checks, upload retention
-│   │   ├── worker/           # Celery app, crawl and resume tasks, state/progress/log helpers
+│   │   ├── services/         # background-job control (crawl, resume, match), stale-job checks, top-10 match queries, upload retention
+│   │   ├── worker/           # Celery app, crawl, resume and match tasks, state/progress/log helpers
 │   │   ├── crawler/          # BFS frontier, fetcher, robots, rate limiter, URLs, SSRF, browser, pipeline
 │   │   ├── extractors/       # plug-ins: base, registry, generic, fake_python_jobs, mock_static, mock_dynamic
 │   │   ├── resumes/          # validation, text_extraction, ocr, fields, pipeline
 │   │   ├── locations/        # cities.json and the city normalizer (candidates and job locations)
 │   │   ├── skills/           # taxonomy.json, normalizer, extractor, sync
-│   │   └── matching/         # empty until its phase
+│   │   └── matching/         # scoring (exact), explanation, ranking, tfidf (tie-breaker), engine (the match run)
 │   └── tests/                # unit/ (offline), integration/ (PostgreSQL), fixtures/html, resume_pdfs.py (synthetic PDFs)
 ├── mock-site/                # optional demo job site (static + JavaScript pages, robots.txt)
 ├── frontend/
@@ -294,3 +386,5 @@ The full planned layout is in [LLD Part 2](docs/LLD/02_Project_Structure.md).
 | An upload returns 422 `NO_VALID_FILES` | Every file was rejected; `details.rejected_files` gives each reason (`NOT_A_PDF`: the file does not start with `%PDF-` or is declared as another type; `FILE_TOO_LARGE`: over `MAX_UPLOAD_MB`). |
 | A scanned resume is flagged "OCR produced no text (Tesseract is not installed)" | The worker runs outside Docker without Tesseract. Install it, or use the worker container. |
 | A resume fails with "the file has N pages; at most 20 are allowed" | Raise `PDF_MAX_PAGES` in `.env` and restart the worker. |
+| `GET /candidates/{id}/matches` returns `"items": []` and `"computed_at": null` | No match run has included this candidate yet (for example it was uploaded after the last run). Run `POST /background-jobs/match`. |
+| A match job fails with "No candidates to match" or "No jobs to match" | Upload resumes or run a crawl first; the previous matches are unchanged. |

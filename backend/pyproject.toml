@@ -7,8 +7,7 @@ name = "fitscan-backend"
 version = "0.1.0"
 description = "Job–Candidate Matching Platform: FastAPI API and Celery worker"
 requires-python = ">=3.12"
-# Runtime dependencies of both images (HLD §7.5). PDF and OCR libraries are worker-only (below);
-# matching libraries are added in the phase that implements them.
+# Runtime dependencies of both images (HLD §7.5). PDF, OCR and TF-IDF libraries are worker-only (below).
 dependencies = [
     "fastapi==0.162.0",
     "uvicorn==0.54.0",
@@ -34,6 +33,14 @@ worker = [
     "pdfplumber==0.11.10",  # tables, and word extraction when PyMuPDF's text looks garbled
     "pytesseract==0.3.13",  # calls the Tesseract binary (installed in the worker image)
     "pillow==13.0.0",  # images passed to Tesseract
+    "scikit-learn==1.9.1",  # TF-IDF text similarity: the tie-breaker of equal match scores, never part of the score
+    # scikit-learn's own dependencies, pinned as well, so every fresh worker build gets the same versions
+    "numpy==2.5.4",
+    "scipy==1.18.1",
+    "joblib==1.6.0",
+    "threadpoolctl==3.8.0",
+    "narwhals==2.28.0",
+    "cloudpickle==3.1.2",  # needed by joblib
 ]
 # Test tools: pip install -e ".[dev]"
 dev = [
