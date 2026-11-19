@@ -208,15 +208,18 @@ The folders and what each one contains come from HLD §17. **File names inside t
 │   │   ├── config.py             # settings read from environment variables
 │   │   ├── api/                  # routers (one file per resource)
 │   │   │   ├── background_jobs.py · jobs.py · candidates.py
-│   │   │   └── exports.py · skills.py · health.py
+│   │   │   ├── exports.py · skills.py · health.py
+│   │   │   └── upload_limit.py      # total size limit of an upload request, while it streams in
 │   │   ├── schemas/              # Pydantic request/response models and record schemas
+│   │   │                         # (e.g. job.py: JobRecord, candidate.py: CandidateRecord)
 │   │   ├── models/               # SQLAlchemy models, one class per table
 │   │   ├── db/                   # engine and session management
 │   │   ├── services/             # business rules that use the database
 │   │   │   ├── background_jobs.py   # create, list, cancel background jobs
 │   │   │   ├── search.py            # filtered, paginated job/candidate queries
 │   │   │   ├── matches.py           # top-10 match queries
-│   │   │   └── export.py            # CSV/JSON streaming
+│   │   │   ├── export.py            # CSV/JSON streaming
+│   │   │   └── upload_retention.py  # manual clean-up of uploads no longer needed (Part 6)
 │   │   ├── worker/               # the only code that knows about Celery
 │   │   │   ├── celery_app.py        # Celery application and settings
 │   │   │   ├── tasks.py             # crawl, resume and match task entry points
@@ -237,7 +240,11 @@ The folders and what each one contains come from HLD §17. **File names inside t
 │   │   │   ├── validation.py        # signature, size, encryption, corruption checks
 │   │   │   ├── text_extraction.py   # text blocks, column order, tables
 │   │   │   ├── ocr.py               # scanned-page detection and Tesseract OCR
-│   │   │   └── fields.py            # sections and candidate fields
+│   │   │   ├── fields.py            # sections and candidate fields
+│   │   │   └── pipeline.py          # from a stored PDF to a saved candidate; duplicate rules
+│   │   ├── locations/
+│   │   │   ├── cities.json          # known cities and their other spellings
+│   │   │   └── normalizer.py        # text → canonical city (candidates and job locations)
 │   │   ├── skills/
 │   │   │   ├── taxonomy.json        # canonical skills and their aliases
 │   │   │   ├── normalizer.py        # alias → canonical name
@@ -250,7 +257,7 @@ The folders and what each one contains come from HLD §17. **File names inside t
 │   │       └── engine.py            # loads data, scores all pairs, saves results
 │   └── tests/
 │       ├── fixtures/html/        # saved static and rendered pages
-│       ├── fixtures/pdf/         # one-column, two-column, table, scanned, encrypted, corrupt
+│       ├── resume_pdfs.py        # synthetic resume PDFs, generated while the tests run (Part 9)
 │       ├── unit/
 │       └── integration/
 ├── frontend/
@@ -279,6 +286,7 @@ The folders and what each one contains come from HLD §17. **File names inside t
 | `app/crawler` | Polite, bounded BFS crawl and the per-page job pipeline. | Worker | Part 5 |
 | `app/extractors` | Site-specific parsing of HTML into raw jobs and links. Never touches the database. | Worker | Part 5 |
 | `app/resumes` | PDF checks, text and layout extraction, OCR and field extraction. | Worker (quick checks also in API) | Part 6 |
+| `app/locations` | The city list and normalizer, shared by candidates and job locations, so "Bangalore" and "Bengaluru" are one city. Standard library only. | API, worker | Parts 6–7 |
 | `app/skills` | The taxonomy, the normalizer and the skill extractor, shared by jobs, resumes and search. | API, worker | Part 6 |
 | `app/matching` | Scoring, explanations, TF-IDF tie-breaker, ranking, and the match run. | Worker (ranking order also used by API queries) | Part 7 |
 | `frontend/src` | React pages, components, typed API client and polling hooks. | Browser | Part 8 |
@@ -420,7 +428,7 @@ erDiagram
 | stored_path | text | | Internal UUID path on the uploads volume. Never returned by the API. |
 | resume_text | text | | Extracted text, used for TF-IDF and debugging. |
 | parse_warnings | JSONB | | For example `["invalid email removed"]`. |
-| background_job_id | UUID | **FK** → `background_jobs`, nullable | The resume job that created the candidate. |
+| background_job_id | UUID | **FK** → `background_jobs`, nullable | The latest resume job that parsed the candidate. A newer resume with the same email moves it to that job. |
 | created_at, updated_at | timestamptz | | |
 
 `skills` for a candidate come from `candidate_skills`.
@@ -476,7 +484,7 @@ Example `score_breakdown` (shape only):
 | background_job_id | UUID | **PK** | |
 | type | text | NOT NULL; CHECK in (`crawl`, `resume`, `match`) | |
 | status | text | NOT NULL; CHECK in (`queued`, `running`, `completed`, `failed`, `cancelled`) | Lifecycle from the brief (Part 5). |
-| params | JSONB | | Crawl configuration, or the list of stored files for a resume job. |
+| params | JSONB | | Crawl configuration, or for a resume job the stored files: `upload_id`, `stored_file` (`<upload_id>.pdf`) and `size_bytes` of each. Never the original file names. |
 | progress_current, progress_total | integer | CHECK `progress_current ≥ 0` | |
 | items_succeeded, items_failed | integer | | Counters shown in the UI. |
 | cancel_requested | boolean | | Set by the API; checked by the worker between items. |
@@ -492,8 +500,8 @@ Example `score_breakdown` (shape only):
 | background_job_id | UUID | **FK** → `background_jobs`, ON DELETE CASCADE | |
 | created_at | timestamptz | default `now()` | The timestamp the brief requires. |
 | level | text | | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
-| message | text | | Human-readable. Never contains resume content or personal data. |
-| context | JSONB | | For example `{"url": "...", "attempt": 2}` or `{"file": "cv_07.pdf"}`. |
+| message | text | | Human-readable. Never contains uploaded file names, resume content or personal data; a file is named by its upload ID. |
+| context | JSONB | | For example `{"url": "...", "attempt": 2}` or `{"upload_id": "7d2c1a9e-…", "page": 2}`. |
 
 ### 3.5 Relationships and Keys
 
@@ -662,7 +670,7 @@ The API does not use 413 or 415. An oversized or non-PDF upload is reported per 
 | Method | Path | Purpose | Inputs | Success response |
 |---|---|---|---|---|
 | POST | `/background-jobs/crawl` | Start a crawl | Body: `seed_url`, `max_depth`, `max_pages`, `allowed_domains` (optional, defaults to the seed host), `extractor` (optional) | 202 background job |
-| POST | `/background-jobs/resume` | Upload PDFs and start parsing | Multipart: one or more `files` | 202 background job with `accepted_files` and `rejected_files`; 422 if no file is accepted |
+| POST | `/background-jobs/resume` | Upload PDFs and start parsing | Multipart: one or more `files` | 202 background job with `accepted_files` (`index`, `upload_id`, `size_bytes`) and `rejected_files` (`index`, `code`, `message`); 422 if no file is accepted or the request is too large |
 | POST | `/background-jobs/match` | Recompute all matches | None | 202 background job |
 | GET | `/background-jobs` | List background jobs | Query: `type`, `status`, `page`, `page_size` | 200 list |
 | GET | `/background-jobs/{id}` | One job's status, progress, counters and parameters | Path: `id` | 200 job, or 404 |
@@ -693,9 +701,12 @@ The API does not use 413 or 415. An oversized or non-PDF upload is reported per 
 |---|---|---|
 | At least one file accepted | 202 | The new background job, with `accepted_files` and `rejected_files` |
 | No file accepted, for any reason | 422 | Error envelope with code `NO_VALID_FILES`; `details.rejected_files` gives each file's reason |
-| No files sent, or more files than the per-request limit | 422 | Validation error |
+| No files sent, or more files than the per-request limit (`MAX_UPLOAD_FILES`, 20) | 422 | Validation error |
+| All files together larger than `MAX_UPLOAD_REQUEST_MB` (50 MB, which must be more than `MAX_UPLOAD_MB`) | 422 | Validation error (`VALIDATION_ERROR`, field `body`). The request is stopped while it streams in: a declared `Content-Length` over the limit is refused before anything is read, a chunked body is cut off at the limit. Nothing is stored, no job is created, and the response closes the connection (`Connection: close`). |
 
 This follows HLD §9.2: bad files are rejected one by one, good files still start a job, and a request with no valid file returns 422 without creating a job. HLD v1.2 §12.1 and §14 say the same. Corrupt and encrypted PDFs pass this upload check and fail later, in the worker (Part 6).
+
+**Files are identified by position, never by name.** Each entry of `accepted_files` is `{"index", "upload_id", "size_bytes"}` and each entry of `rejected_files` is `{"index", "code", "message"}`, where `index` is the file's 0-based position in the request's `files`. The client maps the position to its own file list. No response echoes an original file name, and the messages do not contain it ("File is larger than 20 MB."). The `upload_id` is the file's identifier in the job's parameters and log lines.
 
 ### 4.6 Request and Response Examples
 
@@ -896,7 +907,7 @@ flowchart TD
 Code: `services/background_jobs.py`.
 
 1. Validate the request (crawl settings, or the uploaded files: Part 6).
-2. Insert the `background_jobs` row with `status = 'queued'`, `type` and `params` (crawl settings or the list of stored files), then **commit**. Committing first guarantees that the worker can always find the row.
+2. Insert the `background_jobs` row with `status = 'queued'`, `type` and `params` (crawl settings, or the stored files by upload ID and storage name, without original file names), then **commit**. Committing first guarantees that the worker can always find the row.
 3. Publish the Celery task with the single argument `background_job_id`, and store the returned `celery_task_id`.
 4. If publishing fails, set the job to `failed` ("could not be queued") and return 503.
 5. Return **202 Accepted** with the job resource. The UI starts polling (Part 8).
@@ -921,8 +932,8 @@ Code: `worker/tasks.py` holds three thin task functions. Each one:
 
 - **Logs** are rows in `background_job_logs`, with a server timestamp, a level (`DEBUG`, `INFO`, `WARNING`, `ERROR`), a message and optional JSON context.
 - All task code writes logs through one helper, `log(job_id, level, message, **context)`, in `worker/progress.py`, so the format is always the same.
-- Logs contain URLs, file names and error reasons, but **never resume content or personal data**.
-- Typical lines: `Fetched … (200)`, `Extracted 12 jobs`, `Skipped … disallowed by robots.txt`, `Parsed cv_03.pdf (OCR)`, `cv_07.pdf failed: file is encrypted`.
+- Logs contain URLs, upload IDs, page numbers and error reasons, but **never uploaded file names, resume content or personal data**. A resume file is named by the first 8 characters of its upload ID.
+- Typical lines: `Fetched … (200)`, `Extracted 12 jobs`, `Skipped … disallowed by robots.txt`, `Resume upload 7d2c1a9e: page 1: OCR completed (543 characters).`, `Resume upload 7d2c1a9e: parsed (created a new candidate, OCR on page 1).`, `Resume upload 3f81b0c2 failed: the file is password-protected.`
 
 ### 5.7 Cancellation
 
@@ -1151,13 +1162,13 @@ Code: `resumes/validation.py`, called by the resume upload endpoint.
 
 | Check | How | If it fails |
 |---|---|---|
-| Size ≤ 20 MB (20 × 1024 × 1024 bytes) | Counted **while streaming**, so an oversized file is never fully read into memory | File rejected with code `FILE_TOO_LARGE`: "cv_09.pdf is larger than 20 MB." |
+| Size ≤ 20 MB (20 × 1024 × 1024 bytes) | Counted **while streaming**, so an oversized file is never fully read into memory | File rejected with code `FILE_TOO_LARGE`: "File is larger than 20 MB." |
 | Real PDF | The first bytes must be the `%PDF-` signature. The file name extension and declared content type are checked but **not trusted**. | File rejected with code `NOT_A_PDF` |
 | Number of files | A limit on files per request | Whole request rejected with 422 |
 
 A rejected file does not stop the others. The whole request returns 202 if at least one file is accepted, otherwise 422 with every file's reason (Section 4.5).
 
-Valid files are stored under a **random UUID name** in the uploads volume. The original file name is kept only as data (`source_file`) and is never used as a path, which prevents path traversal. No endpoint ever serves the raw PDF. The job's `params` hold the list of stored files.
+Valid files are stored under a **random UUID name**, `<upload_id>.pdf`, in the uploads volume. The original file name is never used as a path, which prevents path traversal. It waits for the worker in a small metadata file next to the PDF, `<upload_id>.json`, and after parsing it is kept only as data in `candidates.source_file`. No endpoint ever serves the uploads volume. The job's `params` hold, for each stored file, only its `upload_id`, `stored_file` and `size_bytes`, so `GET /background-jobs/{id}` never shows a file name. API responses identify files by their position in the request and their upload ID (Part 4, Section 4.5), and log lines by their upload ID.
 
 ### 6.3 Opening and Checking the PDF (Worker)
 
@@ -1184,7 +1195,7 @@ Code: `resumes/ocr.py`. OCR is a **Should** requirement; flagging is the permitt
 
 - A page counts as **scanned** if it has almost no extractable text but contains images (the threshold is configurable).
 - A scanned page is rendered to an image with PyMuPDF at a resolution suitable for OCR (for example 300 DPI) and passed to Tesseract.
-- If any page needed OCR, the candidate is saved with `parsed_with_ocr = true`.
+- `parsed_with_ocr` is true when the text of at least one page came from OCR. A scanned page that could not be read adds a note to `parse_warnings` instead; if other pages have text, the candidate is still saved.
 - If Tesseract is missing, times out or returns no usable text, the file is **flagged** with a warning ("scanned resume: OCR produced no text"). No candidate is created from empty text.
 - `OCR_ENABLED` and `OCR_LANGUAGE` configure this step.
 
@@ -1216,7 +1227,7 @@ Code: `resumes/fields.py`. Fields are found with simple rules:
    - the same file (same SHA-256 of the bytes) is logged as "duplicate file, skipped";
    - the same person with a new file (same email, ignoring case) updates the existing candidate's parsed fields.
 4. The candidate is saved with `source_file`, `stored_path`, `resume_text`, `parsed_with_ocr` and `background_job_id`, and their skills are saved in `candidate_skills`.
-5. A log line records the result, for example "Parsed cv_03.pdf (OCR)". Log lines never contain resume content.
+5. A log line records the result by upload ID, for example "Resume upload 7d2c1a9e: parsed (created a new candidate, OCR on page 1)." Log lines never contain file names, resume content or personal data.
 
 ### 6.8 Skill Extraction and Normalization
 
@@ -1260,6 +1271,33 @@ Every score is built from extracted skills, so extraction mistakes matter more t
 1. **Labelled examples.** The job and resume test fixtures are labelled by hand with their expected skills (and, for jobs, the requirement level). Tests report **precision** (the share of extracted skills that are correct) and **recall** (the share of labelled skills that were found). The README records the measured values; no target is set in advance.
 2. **Unmatched-term report.** Each crawl and resume job logs the most frequent skill-like terms that matched no alias, as terms and counts only. Reviewing this list is how the taxonomy grows; aliases are added by hand, never automatically.
 3. **Hand-check feedback.** Every extraction error found during the README's 5-candidate hand check becomes a new labelled test case.
+
+### 6.10 Upload Retention
+
+Code: `services/upload_retention.py`. Uploaded PDFs are personal data, so files that are no longer needed are removed. The clean-up is a **manual command** run in the API container, the only one with write access to the uploads volume (the worker reads it read-only). It is a **dry run** unless `--delete` is given, and there is no scheduler:
+
+```bash
+docker compose exec api python -m app.services.upload_retention            # dry run: counts only
+docker compose exec api python -m app.services.upload_retention --delete   # delete
+```
+
+The rules are decided per upload ID from PostgreSQL: the resume jobs' `params` and the candidates' `stored_path`.
+
+| Upload | What happens |
+|---|---|
+| Its resume job is `queued` or `running` | Nothing, ever |
+| Its PDF is a candidate's current `stored_path` | The PDF is kept while the candidate exists. Its metadata file (`.json`) is deleted once the job has finished, because the name is then in `source_file` |
+| A finished job, and no candidate uses the PDF (failed, flagged scan, duplicate, cancelled, or replaced by a newer resume with the same email) | The PDF and the metadata file are deleted 7 days after the job finished |
+| In no job at all (for example the API stopped between storing the files and creating the job) | Deleted 1 day after the files were written |
+| `<upload_id>.part` or `<upload_id>.json.part` (an interrupted copy) | Deleted 1 hour after it was written |
+| Any other file, folder or link | Never touched; counted as unexpected |
+
+Safeguards:
+
+- Only regular files named after a UUID, directly inside `UPLOAD_DIR`, are considered, and each path is checked again just before it is deleted.
+- The database is only read. Files are listed before the database is read, so an upload stored meanwhile is not part of the run; a new upload is young enough to be kept by the rules anyway.
+- A file that is already gone counts as done, so running the command twice does no harm.
+- The output and the log contain counts per rule only: no upload IDs, file names or contents.
 
 ---
 
@@ -1570,7 +1608,7 @@ Polling stops when every visible job is `completed`, `failed` or `cancelled`. Po
 1. **Validate early, in three layers.** Pydantic checks every API input and every extracted record. Normalization functions clean dates, numbers, URLs and text before validation. Database constraints (NOT NULL, CHECK, UNIQUE, FOREIGN KEY) are the final safety net.
 2. **Fail small.** An error affects only the smallest unit: one page, one file or one record. It is logged, counted, and the job continues.
 3. **Clear messages, no internals.** Users see actionable messages in the standard error envelope (Part 4, Section 4.4). Stack traces and internal paths go only to server logs.
-4. **No personal data in logs.** Logs contain URLs, file names and reasons, never resume content.
+4. **No personal data in logs.** Logs contain URLs, upload IDs, page numbers and reasons, never uploaded file names, resume content or personal data. Exception messages are not logged for resume files either (a database error can quote rejected values): only the exception type and code location.
 
 ### 9.2 Invalid Inputs (API)
 
@@ -1583,6 +1621,7 @@ Polling stops when every visible job is `completed`, `failed` or `cancelled`. Po
 | Uploaded file over 20 MB, or not a PDF | That file is rejected with `FILE_TOO_LARGE` or `NOT_A_PDF`; the other files are still accepted (202) |
 | No acceptable file in an upload | No job is created: 422 with code `NO_VALID_FILES` and every file's reason in `details.rejected_files` (Section 4.5) |
 | No files, or more files than the per-request limit | 422 |
+| All files of one upload together larger than `MAX_UPLOAD_REQUEST_MB` | 422 `VALIDATION_ERROR`, decided while the request streams in: nothing is stored, no job is created, and the connection is closed (Section 4.5) |
 | `sort` or `order` value not in the allow-list | 422: only allow-listed sort fields reach the query, so user input never becomes SQL |
 
 ### 9.3 Failed PDFs
@@ -1640,7 +1679,7 @@ The state rules are in Part 5, Section 5.8. What the user sees:
 | Folder | Contents |
 |---|---|
 | `fixtures/html/` | Saved pages per site: `<site>_listing.html`, `<site>_detail.html`, and `<site>_rendered.html` for a JavaScript page captured after rendering |
-| `fixtures/pdf/` | One-column, two-column, skills-in-a-table, scanned, encrypted and corrupt resumes, generated once with ReportLab and committed |
+| `tests/resume_pdfs.py` | One-column, two-column, skills-in-a-table, scanned (image only), encrypted and corrupt resumes, generated with PyMuPDF while the tests run, so no PDF files are committed and no extra library is needed. Every person in them is invented. |
 | Labelled examples | Job and resume texts with hand-labelled expected skills, for precision and recall (Part 6, Section 6.9) |
 
 ### 9.7 Unit Tests

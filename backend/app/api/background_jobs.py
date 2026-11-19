@@ -1,17 +1,20 @@
 """/background-jobs: create, list, read, cancel, logs (LLD §4.5, HLD §12.3).
 
-Only the crawl type can be created so far; resume upload and match runs come in later phases.
+Crawl and resume jobs can be created; match runs come in a later phase.
 Routers stay thin: validate the input, call the service, return a schema.
 """
 
 import uuid
+from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.resumes.validation import IncomingFile
 from app.schemas.background_job import (
+    AcceptedFileInfo,
     BackgroundJobCreated,
     BackgroundJobDetail,
     BackgroundJobList,
@@ -23,6 +26,8 @@ from app.schemas.background_job import (
     LogLevel,
     LogLine,
     LogList,
+    RejectedFileInfo,
+    ResumeJobCreated,
 )
 from app.schemas.common import ErrorResponse
 from app.services import background_jobs as service
@@ -41,6 +46,26 @@ _ERRORS = {404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}}
 )
 def create_crawl(request: CrawlRequest, db: Session = Depends(get_db)) -> BackgroundJobCreated:
     return BackgroundJobCreated.of(service.create_crawl_job(db, request))
+
+
+@router.post(
+    "/resume", status_code=202, response_model=ResumeJobCreated,
+    responses={422: {"model": ErrorResponse, "description": "No file accepted (NO_VALID_FILES), or no/too many files"},
+               503: {"model": ErrorResponse, "description": "Broker unavailable"}},
+    summary="Upload PDF resumes and start parsing",
+)
+def create_resume(
+    files: list[UploadFile] = File(..., description="One or more PDF resumes (MAX_UPLOAD_FILES per request, "
+                                                    "MAX_UPLOAD_MB each). Each file is accepted or rejected on its own."),
+    db: Session = Depends(get_db),
+) -> ResumeJobCreated:
+    incoming = [IncomingFile(f.file, f.filename, f.content_type) for f in files]
+    job, accepted, rejected = service.create_resume_job(db, incoming)
+    return ResumeJobCreated.of(
+        job,
+        accepted_files=[AcceptedFileInfo(index=a.index, upload_id=a.upload_id, size_bytes=a.size_bytes) for a in accepted],
+        rejected_files=[RejectedFileInfo(**asdict(r)) for r in rejected],
+    )
 
 
 @router.get("", response_model=BackgroundJobList, responses={422: {"model": ErrorResponse}}, summary="List background jobs")

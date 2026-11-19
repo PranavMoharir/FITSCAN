@@ -119,7 +119,7 @@ The API does not use 413 or 415. An oversized or non-PDF upload is reported per 
 | Method | Path | Purpose | Inputs | Success response |
 |---|---|---|---|---|
 | POST | `/background-jobs/crawl` | Start a crawl | Body: `seed_url`, `max_depth`, `max_pages`, `allowed_domains` (optional, defaults to the seed host), `extractor` (optional) | 202 background job |
-| POST | `/background-jobs/resume` | Upload PDFs and start parsing | Multipart: one or more `files` | 202 background job with `accepted_files` and `rejected_files`; 422 if no file is accepted |
+| POST | `/background-jobs/resume` | Upload PDFs and start parsing | Multipart: one or more `files` | 202 background job with `accepted_files` (`index`, `upload_id`, `size_bytes`) and `rejected_files` (`index`, `code`, `message`); 422 if no file is accepted or the request is too large |
 | POST | `/background-jobs/match` | Recompute all matches | None | 202 background job |
 | GET | `/background-jobs` | List background jobs | Query: `type`, `status`, `page`, `page_size` | 200 list |
 | GET | `/background-jobs/{id}` | One job's status, progress, counters and parameters | Path: `id` | 200 job, or 404 |
@@ -150,9 +150,12 @@ The API does not use 413 or 415. An oversized or non-PDF upload is reported per 
 |---|---|---|
 | At least one file accepted | 202 | The new background job, with `accepted_files` and `rejected_files` |
 | No file accepted, for any reason | 422 | Error envelope with code `NO_VALID_FILES`; `details.rejected_files` gives each file's reason |
-| No files sent, or more files than the per-request limit | 422 | Validation error |
+| No files sent, or more files than the per-request limit (`MAX_UPLOAD_FILES`, 20) | 422 | Validation error |
+| All files together larger than `MAX_UPLOAD_REQUEST_MB` (50 MB, which must be more than `MAX_UPLOAD_MB`) | 422 | Validation error (`VALIDATION_ERROR`, field `body`). The request is stopped while it streams in: a declared `Content-Length` over the limit is refused before anything is read, a chunked body is cut off at the limit. Nothing is stored, no job is created, and the response closes the connection (`Connection: close`). |
 
 This follows HLD §9.2: bad files are rejected one by one, good files still start a job, and a request with no valid file returns 422 without creating a job. HLD v1.2 §12.1 and §14 say the same. Corrupt and encrypted PDFs pass this upload check and fail later, in the worker (Part 6).
+
+**Files are identified by position, never by name.** Each entry of `accepted_files` is `{"index", "upload_id", "size_bytes"}` and each entry of `rejected_files` is `{"index", "code", "message"}`, where `index` is the file's 0-based position in the request's `files`. The client maps the position to its own file list. No response echoes an original file name, and the messages do not contain it ("File is larger than 20 MB."). The `upload_id` is the file's identifier in the job's parameters and log lines.
 
 ## 4.6 Request and Response Examples
 

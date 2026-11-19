@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # backend/app/config.py -> parents[2] is the repository root. Inside the Docker image this
@@ -46,9 +46,12 @@ class Settings(BaseSettings):
     # Frontend <-> API wiring: only these origins may call the API from a browser.
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
 
-    # Resume uploads
+    # Resume uploads and PDF checks (LLD §6.2-6.3)
     upload_dir: Path = Path("uploads")
     max_upload_mb: int = Field(default=20, ge=1)
+    max_upload_files: int = Field(default=20, ge=1)  # files per upload request
+    max_upload_request_mb: int = Field(default=50, ge=2)  # all files of one request together, checked while streaming
+    pdf_max_pages: int = Field(default=20, ge=1)  # longer PDFs fail: limits the damage of "PDF bomb" files
 
     # Crawler (used once the crawler is implemented)
     crawler_user_agent: str = "FITSCAN-JobMatcher/0.1"
@@ -58,9 +61,11 @@ class Settings(BaseSettings):
     crawler_request_timeout_seconds: float = Field(default=15.0, gt=0)  # per request, and per browser render
     crawler_private_host_allowlist: Annotated[list[str], NoDecode] = []
 
-    # OCR (used once resume parsing is implemented)
+    # OCR of scanned pages (LLD §6.5)
     ocr_enabled: bool = True
-    ocr_language: str = "eng"
+    ocr_language: str = Field(default="eng", pattern=r"^[a-z_]+(\+[a-z_]+)*$")  # Tesseract codes, e.g. "eng+deu"
+    ocr_min_text_chars: int = Field(default=25, ge=0)  # a page with fewer characters and an image counts as scanned
+    ocr_timeout_seconds: float = Field(default=60.0, gt=0)  # per page
 
     # Matching (used once the matching engine is implemented)
     match_weights: Annotated[MatchWeights, NoDecode] = MatchWeights(required=70, nice=15, experience=10, location=5)
@@ -68,6 +73,13 @@ class Settings(BaseSettings):
     # Stale background-job detection (LLD §5.8)
     job_heartbeat_timeout_seconds: int = Field(default=600, ge=1)
     job_queued_timeout_seconds: int = Field(default=600, ge=1)
+
+    @model_validator(mode="after")
+    def _request_limit_fits_one_file(self) -> "Settings":
+        if self.max_upload_request_mb <= self.max_upload_mb:
+            raise ValueError("MAX_UPLOAD_REQUEST_MB must be larger than MAX_UPLOAD_MB, "
+                             "or a single file of the allowed size could never be uploaded")
+        return self
 
     @field_validator("cors_origins", "crawler_private_host_allowlist", mode="before")
     @classmethod

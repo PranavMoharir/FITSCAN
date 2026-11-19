@@ -1842,9 +1842,9 @@ All configuration is read from environment variables, loaded with pydantic-setti
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL` | Database connection |
 | `REDIS_URL` / `CELERY_BROKER_URL` | Broker connection |
 | `CORS_ORIGINS`, `VITE_API_BASE_URL` | Frontend ↔ API wiring |
-| `UPLOAD_DIR`, `MAX_UPLOAD_MB` (20) | Upload storage and limit |
+| `UPLOAD_DIR`, `MAX_UPLOAD_MB` (20), `MAX_UPLOAD_FILES` (20), `MAX_UPLOAD_REQUEST_MB` (50), `PDF_MAX_PAGES` (20) | Upload storage and limits: per file, files per request, all files of one request together (checked while streaming), pages per PDF |
 | `CRAWLER_USER_AGENT`, `CRAWLER_DEFAULT_DELAY_SECONDS`, `CRAWLER_MAX_RETRIES`, `CRAWLER_MAX_PAGES_LIMIT`, `CRAWLER_PRIVATE_HOST_ALLOWLIST` | Crawler behavior |
-| `OCR_ENABLED`, `OCR_LANGUAGE` | OCR behavior |
+| `OCR_ENABLED`, `OCR_LANGUAGE`, `OCR_MIN_TEXT_CHARS` (25), `OCR_TIMEOUT_SECONDS` (60) | OCR behavior: on/off, language, scanned-page threshold, time limit per page |
 | `MATCH_WEIGHTS` (70,15,10,5) | Scoring weights |
 | `JOB_HEARTBEAT_TIMEOUT_SECONDS` (600), `JOB_QUEUED_TIMEOUT_SECONDS` (600) | Stale-job detection (Section 13.7) |
 

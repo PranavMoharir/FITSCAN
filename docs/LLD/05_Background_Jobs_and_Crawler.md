@@ -69,7 +69,7 @@ flowchart TD
 Code: `services/background_jobs.py`.
 
 1. Validate the request (crawl settings, or the uploaded files: Part 6).
-2. Insert the `background_jobs` row with `status = 'queued'`, `type` and `params` (crawl settings or the list of stored files), then **commit**. Committing first guarantees that the worker can always find the row.
+2. Insert the `background_jobs` row with `status = 'queued'`, `type` and `params` (crawl settings, or the stored files by upload ID and storage name, without original file names), then **commit**. Committing first guarantees that the worker can always find the row.
 3. Publish the Celery task with the single argument `background_job_id`, and store the returned `celery_task_id`.
 4. If publishing fails, set the job to `failed` ("could not be queued") and return 503.
 5. Return **202 Accepted** with the job resource. The UI starts polling (Part 8).
@@ -94,8 +94,8 @@ Code: `worker/tasks.py` holds three thin task functions. Each one:
 
 - **Logs** are rows in `background_job_logs`, with a server timestamp, a level (`DEBUG`, `INFO`, `WARNING`, `ERROR`), a message and optional JSON context.
 - All task code writes logs through one helper, `log(job_id, level, message, **context)`, in `worker/progress.py`, so the format is always the same.
-- Logs contain URLs, file names and error reasons, but **never resume content or personal data**.
-- Typical lines: `Fetched … (200)`, `Extracted 12 jobs`, `Skipped … disallowed by robots.txt`, `Parsed cv_03.pdf (OCR)`, `cv_07.pdf failed: file is encrypted`.
+- Logs contain URLs, upload IDs, page numbers and error reasons, but **never uploaded file names, resume content or personal data**. A resume file is named by the first 8 characters of its upload ID.
+- Typical lines: `Fetched … (200)`, `Extracted 12 jobs`, `Skipped … disallowed by robots.txt`, `Resume upload 7d2c1a9e: page 1: OCR completed (543 characters).`, `Resume upload 7d2c1a9e: parsed (created a new candidate, OCR on page 1).`, `Resume upload 3f81b0c2 failed: the file is password-protected.`
 
 ## 5.7 Cancellation
 

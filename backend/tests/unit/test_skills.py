@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.skills.extractor import extract_job_skills, extract_skills
+from app.skills.extractor import extract_job_skills, extract_resume_skills, extract_skills
 from app.skills.normalizer import Taxonomy, get_taxonomy
 
 
@@ -134,3 +134,52 @@ def test_ambiguous_words_count_inside_a_requirements_section():
     skills = extract_job_skills("Requirements: Go\n- Spring and REST\nNice to have: Swift\nAbout us:\nGo to our office.")
     assert (skills.required, skills.nice_to_have) == (["Go", "REST", "Spring"], ["Swift"])
     assert extract_job_skills("Requirements:\n- you will go to client sites").required == []  # lower-case prose
+
+
+# --- Resumes (LLD §6.6, §6.8) -----------------------------------------------------------------------
+
+
+def test_table_cells_are_a_skill_context_for_resumes():
+    assert extract_resume_skills("Go").skills == []               # a lone "Go" at the start of a line: not enough
+    assert extract_resume_skills("Go", table_cells=["Go"]).skills == ["Go"]
+    assert extract_resume_skills(None, skills_section="Go\nR").skills == ["Go", "R"]
+
+
+def test_resume_skills_keep_symbols_and_aliases():
+    skills = extract_resume_skills("Worked with ReactJS, node.js, C++, C# and .NET; also k8s and Postgres.")
+    assert skills.skills == [".NET", "C#", "C++", "Kubernetes", "Node.js", "PostgreSQL", "React"]
+
+
+def test_resume_unmatched_terms_skip_personal_details():
+    skills = extract_resume_skills(None, skills_section="Looker Studio, Verma Labs, a.verma@example.com, 9876543210",
+                                   private_terms=["Asha", "Verma", "a.verma@example.com"])
+    assert skills.unmatched == ["looker studio"]
+
+
+RESUME_LABELLED = [
+    # (full text, Skills section, table cells, expected skills)
+    ("I go to meetups and lead R&D projects with the rest of the team.", "Python, Go, Docker", [],
+     {"Python", "Go", "Docker"}),
+    ("Built services in Java with Spring and RESTful APIs.", "", [], {"Java", "Spring", "REST"}),
+    ("Data analyst.", "", ["Languages", "R, SQL", "Tools", "Excel, Power BI"], {"R", "SQL", "Excel", "Power BI"}),
+    ("Frontend developer using TypeScript, React and CSS; deploys on AWS.", "HTML\nGit", [],
+     {"TypeScript", "React", "CSS", "AWS", "HTML", "Git"}),
+    ("Swift and SwiftUI for iOS apps; machine learning engineer on the side.", "C, C++", [],
+     {"Swift", "Machine Learning", "C", "C++"}),
+]
+
+
+def test_precision_and_recall_on_labelled_resume_examples():
+    true_positive = extracted = labelled = 0
+    for text, section, cells, expected in RESUME_LABELLED:
+        found = set(extract_resume_skills(text, section, cells).skills)
+        true_positive += len(found & expected)
+        extracted += len(found)
+        labelled += len(expected)
+    precision, recall = true_positive / extracted, true_positive / labelled
+    print(f"resume skill extraction on labelled examples: precision {precision:.2f}, recall {recall:.2f}")
+    # Measured values, recorded in the README (LLD §6.9 sets no target). The one known miss is
+    # "Swift" at the start of a sentence: outside a skill context, a capitalised ambiguous word
+    # there does not count ("Spring is our busy season"), so 19 of the 20 labelled skills are found.
+    assert (true_positive, extracted, labelled) == (19, 19, 20)
+    assert precision == 1.0 and recall == 0.95

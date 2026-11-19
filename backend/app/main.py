@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import background_jobs, health
+from app.api.upload_limit import RequestTooLarge, UploadSizeLimit, handle_request_too_large
 from app.config import get_settings
 from app.errors import register_error_handlers
 
@@ -21,6 +22,9 @@ def create_app() -> FastAPI:
         description="Crawls jobs, parses resumes and matches candidates to jobs.",
     )
 
+    # A total size limit for resume uploads, checked while the request streams in. Added before
+    # CORS, so CORS wraps it and a browser can read its 422 answer.
+    app.add_middleware(UploadSizeLimit)
     # Only the configured frontend origin may call the API from a browser (HLD §12.1).
     app.add_middleware(
         CORSMiddleware,
@@ -30,6 +34,7 @@ def create_app() -> FastAPI:
     )
 
     register_error_handlers(app)
+    app.add_exception_handler(RequestTooLarge, handle_request_too_large)
 
     app.include_router(health.router)
     app.include_router(background_jobs.router)

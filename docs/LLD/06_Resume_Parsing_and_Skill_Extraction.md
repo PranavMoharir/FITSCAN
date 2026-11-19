@@ -30,13 +30,13 @@ Code: `resumes/validation.py`, called by the resume upload endpoint.
 
 | Check | How | If it fails |
 |---|---|---|
-| Size ≤ 20 MB (20 × 1024 × 1024 bytes) | Counted **while streaming**, so an oversized file is never fully read into memory | File rejected with code `FILE_TOO_LARGE`: "cv_09.pdf is larger than 20 MB." |
+| Size ≤ 20 MB (20 × 1024 × 1024 bytes) | Counted **while streaming**, so an oversized file is never fully read into memory | File rejected with code `FILE_TOO_LARGE`: "File is larger than 20 MB." |
 | Real PDF | The first bytes must be the `%PDF-` signature. The file name extension and declared content type are checked but **not trusted**. | File rejected with code `NOT_A_PDF` |
 | Number of files | A limit on files per request | Whole request rejected with 422 |
 
 A rejected file does not stop the others. The whole request returns 202 if at least one file is accepted, otherwise 422 with every file's reason (Section 4.5).
 
-Valid files are stored under a **random UUID name** in the uploads volume. The original file name is kept only as data (`source_file`) and is never used as a path, which prevents path traversal. No endpoint ever serves the raw PDF. The job's `params` hold the list of stored files.
+Valid files are stored under a **random UUID name**, `<upload_id>.pdf`, in the uploads volume. The original file name is never used as a path, which prevents path traversal. It waits for the worker in a small metadata file next to the PDF, `<upload_id>.json`, and after parsing it is kept only as data in `candidates.source_file`. No endpoint ever serves the uploads volume. The job's `params` hold, for each stored file, only its `upload_id`, `stored_file` and `size_bytes`, so `GET /background-jobs/{id}` never shows a file name. API responses identify files by their position in the request and their upload ID (Part 4, Section 4.5), and log lines by their upload ID.
 
 ## 6.3 Opening and Checking the PDF (Worker)
 
@@ -63,7 +63,7 @@ Code: `resumes/ocr.py`. OCR is a **Should** requirement; flagging is the permitt
 
 - A page counts as **scanned** if it has almost no extractable text but contains images (the threshold is configurable).
 - A scanned page is rendered to an image with PyMuPDF at a resolution suitable for OCR (for example 300 DPI) and passed to Tesseract.
-- If any page needed OCR, the candidate is saved with `parsed_with_ocr = true`.
+- `parsed_with_ocr` is true when the text of at least one page came from OCR. A scanned page that could not be read adds a note to `parse_warnings` instead; if other pages have text, the candidate is still saved.
 - If Tesseract is missing, times out or returns no usable text, the file is **flagged** with a warning ("scanned resume: OCR produced no text"). No candidate is created from empty text.
 - `OCR_ENABLED` and `OCR_LANGUAGE` configure this step.
 
@@ -95,7 +95,7 @@ Code: `resumes/fields.py`. Fields are found with simple rules:
    - the same file (same SHA-256 of the bytes) is logged as "duplicate file, skipped";
    - the same person with a new file (same email, ignoring case) updates the existing candidate's parsed fields.
 4. The candidate is saved with `source_file`, `stored_path`, `resume_text`, `parsed_with_ocr` and `background_job_id`, and their skills are saved in `candidate_skills`.
-5. A log line records the result, for example "Parsed cv_03.pdf (OCR)". Log lines never contain resume content.
+5. A log line records the result by upload ID, for example "Resume upload 7d2c1a9e: parsed (created a new candidate, OCR on page 1)." Log lines never contain file names, resume content or personal data.
 
 ## 6.8 Skill Extraction and Normalization
 
@@ -139,3 +139,30 @@ Every score is built from extracted skills, so extraction mistakes matter more t
 1. **Labelled examples.** The job and resume test fixtures are labelled by hand with their expected skills (and, for jobs, the requirement level). Tests report **precision** (the share of extracted skills that are correct) and **recall** (the share of labelled skills that were found). The README records the measured values; no target is set in advance.
 2. **Unmatched-term report.** Each crawl and resume job logs the most frequent skill-like terms that matched no alias, as terms and counts only. Reviewing this list is how the taxonomy grows; aliases are added by hand, never automatically.
 3. **Hand-check feedback.** Every extraction error found during the README's 5-candidate hand check becomes a new labelled test case.
+
+## 6.10 Upload Retention
+
+Code: `services/upload_retention.py`. Uploaded PDFs are personal data, so files that are no longer needed are removed. The clean-up is a **manual command** run in the API container, the only one with write access to the uploads volume (the worker reads it read-only). It is a **dry run** unless `--delete` is given, and there is no scheduler:
+
+```bash
+docker compose exec api python -m app.services.upload_retention            # dry run: counts only
+docker compose exec api python -m app.services.upload_retention --delete   # delete
+```
+
+The rules are decided per upload ID from PostgreSQL: the resume jobs' `params` and the candidates' `stored_path`.
+
+| Upload | What happens |
+|---|---|
+| Its resume job is `queued` or `running` | Nothing, ever |
+| Its PDF is a candidate's current `stored_path` | The PDF is kept while the candidate exists. Its metadata file (`.json`) is deleted once the job has finished, because the name is then in `source_file` |
+| A finished job, and no candidate uses the PDF (failed, flagged scan, duplicate, cancelled, or replaced by a newer resume with the same email) | The PDF and the metadata file are deleted 7 days after the job finished |
+| In no job at all (for example the API stopped between storing the files and creating the job) | Deleted 1 day after the files were written |
+| `<upload_id>.part` or `<upload_id>.json.part` (an interrupted copy) | Deleted 1 hour after it was written |
+| Any other file, folder or link | Never touched; counted as unexpected |
+
+Safeguards:
+
+- Only regular files named after a UUID, directly inside `UPLOAD_DIR`, are considered, and each path is checked again just before it is deleted.
+- The database is only read. Files are listed before the database is read, so an upload stored meanwhile is not part of the run; a new upload is young enough to be kept by the rules anyway.
+- A file that is already gone counts as done, so running the command twice does no harm.
+- The output and the log contain counts per rule only: no upload IDs, file names or contents.

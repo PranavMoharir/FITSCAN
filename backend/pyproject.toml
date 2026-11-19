@@ -7,8 +7,8 @@ name = "fitscan-backend"
 version = "0.1.0"
 description = "Job–Candidate Matching Platform: FastAPI API and Celery worker"
 requires-python = ">=3.12"
-# Runtime dependencies (HLD §7.5). Libraries for resume parsing, OCR and matching are
-# added in the phases that implement them.
+# Runtime dependencies of both images (HLD §7.5). PDF and OCR libraries are worker-only (below);
+# matching libraries are added in the phase that implements them.
 dependencies = [
     "fastapi==0.162.0",
     "uvicorn==0.54.0",
@@ -21,12 +21,19 @@ dependencies = [
     "redis==8.1.0",
     "httpx==0.28.1",  # crawler HTTP client (and FastAPI's TestClient)
     "beautifulsoup4==4.15.0",  # HTML parsing in the extractors
+    "python-multipart==0.0.33",  # multipart/form-data parsing for resume uploads (FastAPI)
+    "email-validator==2.3.0",  # Pydantic EmailStr in CandidateRecord
 ]
 
 [project.optional-dependencies]
-# Worker-only libraries; the worker image installs them (and the Chromium browser).
+# Worker-only libraries; the worker image installs them (with Chromium and Tesseract).
+# The API image has none of them: it only checks the %PDF- signature and the size of uploads.
 worker = [
     "playwright==1.64.1",  # headless Chromium, only for pages that need JavaScript
+    "pymupdf==1.28.2",  # open PDFs, text blocks with coordinates and font sizes, page rendering for OCR (2.x adds an unused ML layout model)
+    "pdfplumber==0.11.10",  # tables, and word extraction when PyMuPDF's text looks garbled
+    "pytesseract==0.3.13",  # calls the Tesseract binary (installed in the worker image)
+    "pillow==13.0.0",  # images passed to Tesseract
 ]
 # Test tools: pip install -e ".[dev]"
 dev = [

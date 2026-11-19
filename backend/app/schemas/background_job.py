@@ -81,6 +81,42 @@ class BackgroundJobCreated(BaseModel):
         )
 
 
+class AcceptedFileInfo(BaseModel):
+    index: int = Field(description="0-based position of the file in the request's `files`")
+    upload_id: uuid.UUID = Field(description="The file's ID in this job's parameters and log lines")
+    size_bytes: int
+
+
+class RejectedFileInfo(BaseModel):
+    index: int = Field(description="0-based position of the file in the request's `files`")
+    code: Literal["FILE_TOO_LARGE", "NOT_A_PDF"]
+    message: str
+
+
+class ResumeJobCreated(BackgroundJobCreated):
+    """POST /background-jobs/resume (202): the new job plus each file's result (LLD §4.5).
+
+    Files are identified by position and upload ID; original file names are never returned.
+    """
+
+    accepted_files: list[AcceptedFileInfo]
+    rejected_files: list[RejectedFileInfo]
+
+
+_PUBLIC_FILE_KEYS = ("upload_id", "stored_file", "size_bytes")
+
+
+def public_params(job: BackgroundJob) -> dict[str, Any] | None:
+    """The job's parameters as the API shows them. For a resume job, each file shows only its
+    upload ID, storage name and size, even if an older row still held more (e.g. a file name)."""
+    params = job.params
+    if job.type != "resume" or not isinstance(params, dict) or not isinstance(params.get("files"), list):
+        return params
+    files = [{key: item.get(key) for key in _PUBLIC_FILE_KEYS if key in item}
+             for item in params["files"] if isinstance(item, dict)]
+    return {**params, "files": files}
+
+
 class BackgroundJobSummary(BackgroundJobCreated):
     """One item of GET /background-jobs."""
 
@@ -105,7 +141,7 @@ class BackgroundJobDetail(BackgroundJobSummary):
 
     @classmethod
     def of(cls, job: BackgroundJob, **extra: Any):
-        return super().of(job, params=job.params, error_message=job.error_message, **extra)
+        return super().of(job, params=public_params(job), error_message=job.error_message, **extra)
 
 
 class BackgroundJobList(BaseModel):

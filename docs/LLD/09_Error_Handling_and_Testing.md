@@ -7,7 +7,7 @@
 1. **Validate early, in three layers.** Pydantic checks every API input and every extracted record. Normalization functions clean dates, numbers, URLs and text before validation. Database constraints (NOT NULL, CHECK, UNIQUE, FOREIGN KEY) are the final safety net.
 2. **Fail small.** An error affects only the smallest unit: one page, one file or one record. It is logged, counted, and the job continues.
 3. **Clear messages, no internals.** Users see actionable messages in the standard error envelope (Part 4, Section 4.4). Stack traces and internal paths go only to server logs.
-4. **No personal data in logs.** Logs contain URLs, file names and reasons, never resume content.
+4. **No personal data in logs.** Logs contain URLs, upload IDs, page numbers and reasons, never uploaded file names, resume content or personal data. Exception messages are not logged for resume files either (a database error can quote rejected values): only the exception type and code location.
 
 ## 9.2 Invalid Inputs (API)
 
@@ -20,6 +20,7 @@
 | Uploaded file over 20 MB, or not a PDF | That file is rejected with `FILE_TOO_LARGE` or `NOT_A_PDF`; the other files are still accepted (202) |
 | No acceptable file in an upload | No job is created: 422 with code `NO_VALID_FILES` and every file's reason in `details.rejected_files` (Section 4.5) |
 | No files, or more files than the per-request limit | 422 |
+| All files of one upload together larger than `MAX_UPLOAD_REQUEST_MB` | 422 `VALIDATION_ERROR`, decided while the request streams in: nothing is stored, no job is created, and the connection is closed (Section 4.5) |
 | `sort` or `order` value not in the allow-list | 422: only allow-listed sort fields reach the query, so user input never becomes SQL |
 
 ## 9.3 Failed PDFs
@@ -77,7 +78,7 @@ The state rules are in Part 5, Section 5.8. What the user sees:
 | Folder | Contents |
 |---|---|
 | `fixtures/html/` | Saved pages per site: `<site>_listing.html`, `<site>_detail.html`, and `<site>_rendered.html` for a JavaScript page captured after rendering |
-| `fixtures/pdf/` | One-column, two-column, skills-in-a-table, scanned, encrypted and corrupt resumes, generated once with ReportLab and committed |
+| `tests/resume_pdfs.py` | One-column, two-column, skills-in-a-table, scanned (image only), encrypted and corrupt resumes, generated with PyMuPDF while the tests run, so no PDF files are committed and no extra library is needed. Every person in them is invented. |
 | Labelled examples | Job and resume texts with hand-labelled expected skills, for precision and recall (Part 6, Section 6.9) |
 
 ## 9.7 Unit Tests

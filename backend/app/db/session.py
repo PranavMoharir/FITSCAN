@@ -25,6 +25,8 @@ engine = create_engine(
     get_settings().database_url,
     pool_pre_ping=True,  # replaces connections the database has closed (e.g. after a restart)
     connect_args={"connect_timeout": CONNECT_TIMEOUT_SECONDS},
+    # Error messages and logs never show the SQL parameters: they can be resume text or contact details.
+    hide_parameters=True,
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

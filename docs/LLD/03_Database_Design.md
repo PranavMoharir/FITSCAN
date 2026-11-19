@@ -122,7 +122,7 @@ erDiagram
 | stored_path | text | | Internal UUID path on the uploads volume. Never returned by the API. |
 | resume_text | text | | Extracted text, used for TF-IDF and debugging. |
 | parse_warnings | JSONB | | For example `["invalid email removed"]`. |
-| background_job_id | UUID | **FK** → `background_jobs`, nullable | The resume job that created the candidate. |
+| background_job_id | UUID | **FK** → `background_jobs`, nullable | The latest resume job that parsed the candidate. A newer resume with the same email moves it to that job. |
 | created_at, updated_at | timestamptz | | |
 
 `skills` for a candidate come from `candidate_skills`.
@@ -178,7 +178,7 @@ Example `score_breakdown` (shape only):
 | background_job_id | UUID | **PK** | |
 | type | text | NOT NULL; CHECK in (`crawl`, `resume`, `match`) | |
 | status | text | NOT NULL; CHECK in (`queued`, `running`, `completed`, `failed`, `cancelled`) | Lifecycle from the brief (Part 5). |
-| params | JSONB | | Crawl configuration, or the list of stored files for a resume job. |
+| params | JSONB | | Crawl configuration, or for a resume job the stored files: `upload_id`, `stored_file` (`<upload_id>.pdf`) and `size_bytes` of each. Never the original file names. |
 | progress_current, progress_total | integer | CHECK `progress_current ≥ 0` | |
 | items_succeeded, items_failed | integer | | Counters shown in the UI. |
 | cancel_requested | boolean | | Set by the API; checked by the worker between items. |
@@ -194,8 +194,8 @@ Example `score_breakdown` (shape only):
 | background_job_id | UUID | **FK** → `background_jobs`, ON DELETE CASCADE | |
 | created_at | timestamptz | default `now()` | The timestamp the brief requires. |
 | level | text | | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
-| message | text | | Human-readable. Never contains resume content or personal data. |
-| context | JSONB | | For example `{"url": "...", "attempt": 2}` or `{"file": "cv_07.pdf"}`. |
+| message | text | | Human-readable. Never contains uploaded file names, resume content or personal data; a file is named by its upload ID. |
+| context | JSONB | | For example `{"url": "...", "attempt": 2}` or `{"upload_id": "7d2c1a9e-…", "page": 2}`. |
 
 ## 3.5 Relationships and Keys
 

@@ -38,15 +38,18 @@ The folders and what each one contains come from HLD §17. **File names inside t
 │   │   ├── config.py             # settings read from environment variables
 │   │   ├── api/                  # routers (one file per resource)
 │   │   │   ├── background_jobs.py · jobs.py · candidates.py
-│   │   │   └── exports.py · skills.py · health.py
+│   │   │   ├── exports.py · skills.py · health.py
+│   │   │   └── upload_limit.py      # total size limit of an upload request, while it streams in
 │   │   ├── schemas/              # Pydantic request/response models and record schemas
+│   │   │                         # (e.g. job.py: JobRecord, candidate.py: CandidateRecord)
 │   │   ├── models/               # SQLAlchemy models, one class per table
 │   │   ├── db/                   # engine and session management
 │   │   ├── services/             # business rules that use the database
 │   │   │   ├── background_jobs.py   # create, list, cancel background jobs
 │   │   │   ├── search.py            # filtered, paginated job/candidate queries
 │   │   │   ├── matches.py           # top-10 match queries
-│   │   │   └── export.py            # CSV/JSON streaming
+│   │   │   ├── export.py            # CSV/JSON streaming
+│   │   │   └── upload_retention.py  # manual clean-up of uploads no longer needed (Part 6)
 │   │   ├── worker/               # the only code that knows about Celery
 │   │   │   ├── celery_app.py        # Celery application and settings
 │   │   │   ├── tasks.py             # crawl, resume and match task entry points
@@ -67,7 +70,11 @@ The folders and what each one contains come from HLD §17. **File names inside t
 │   │   │   ├── validation.py        # signature, size, encryption, corruption checks
 │   │   │   ├── text_extraction.py   # text blocks, column order, tables
 │   │   │   ├── ocr.py               # scanned-page detection and Tesseract OCR
-│   │   │   └── fields.py            # sections and candidate fields
+│   │   │   ├── fields.py            # sections and candidate fields
+│   │   │   └── pipeline.py          # from a stored PDF to a saved candidate; duplicate rules
+│   │   ├── locations/
+│   │   │   ├── cities.json          # known cities and their other spellings
+│   │   │   └── normalizer.py        # text → canonical city (candidates and job locations)
 │   │   ├── skills/
 │   │   │   ├── taxonomy.json        # canonical skills and their aliases
 │   │   │   ├── normalizer.py        # alias → canonical name
@@ -80,7 +87,7 @@ The folders and what each one contains come from HLD §17. **File names inside t
 │   │       └── engine.py            # loads data, scores all pairs, saves results
 │   └── tests/
 │       ├── fixtures/html/        # saved static and rendered pages
-│       ├── fixtures/pdf/         # one-column, two-column, table, scanned, encrypted, corrupt
+│       ├── resume_pdfs.py        # synthetic resume PDFs, generated while the tests run (Part 9)
 │       ├── unit/
 │       └── integration/
 ├── frontend/
@@ -109,6 +116,7 @@ The folders and what each one contains come from HLD §17. **File names inside t
 | `app/crawler` | Polite, bounded BFS crawl and the per-page job pipeline. | Worker | Part 5 |
 | `app/extractors` | Site-specific parsing of HTML into raw jobs and links. Never touches the database. | Worker | Part 5 |
 | `app/resumes` | PDF checks, text and layout extraction, OCR and field extraction. | Worker (quick checks also in API) | Part 6 |
+| `app/locations` | The city list and normalizer, shared by candidates and job locations, so "Bangalore" and "Bengaluru" are one city. Standard library only. | API, worker | Parts 6–7 |
 | `app/skills` | The taxonomy, the normalizer and the skill extractor, shared by jobs, resumes and search. | API, worker | Part 6 |
 | `app/matching` | Scoring, explanations, TF-IDF tie-breaker, ranking, and the match run. | Worker (ranking order also used by API queries) | Part 7 |
 | `frontend/src` | React pages, components, typed API client and polling hooks. | Browser | Part 8 |

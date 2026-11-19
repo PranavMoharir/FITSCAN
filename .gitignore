@@ -19,6 +19,8 @@ dist/
 
 # Uploaded resumes when the backend runs outside Docker
 backend/uploads/
+# Synthetic sample resumes written by `python -m tests.resume_pdfs sample-resumes`
+backend/sample-resumes/
 
 # Logs
 *.log

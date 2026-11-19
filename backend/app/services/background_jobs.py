@@ -1,12 +1,13 @@
 """Background-job control for the API: create, list, read, logs, cancel, stale-job checks (LLD §5.4-5.8).
 
-Creating a job: insert the row as `queued` and COMMIT first (so the worker can always find it),
-then publish a Celery message that carries only the job ID (ADR-004). If publishing fails, the
-job is marked `failed` ("could not be queued") and the API answers 503.
+Creating a job (crawl or resume): insert the row as `queued` and COMMIT first (so the worker can
+always find it), then publish a Celery message that carries only the job ID (ADR-004). If
+publishing fails, the job is marked `failed` ("could not be queued") and the API answers 503.
 """
 
 import logging
 import uuid
+from dataclasses import asdict
 from datetime import timedelta
 
 from sqlalchemy import func, select, update
@@ -18,6 +19,7 @@ from app.crawler.urls import host_of, is_allowed_host, normalize_url
 from app.errors import AppError
 from app.extractors.registry import get_registry
 from app.models import BackgroundJob, BackgroundJobLog
+from app.resumes.validation import AcceptedFile, IncomingFile, RejectedFile, delete_stored, save_upload, stored_name
 from app.schemas.background_job import CrawlRequest
 from app.worker.celery_app import celery_app
 from app.worker.progress import LOG_LEVELS, add_log
@@ -81,17 +83,16 @@ def validate_crawl_request(request: CrawlRequest) -> dict:
             "allowed_domains": allowed, "extractor": request.extractor}
 
 
-def create_crawl_job(session: Session, request: CrawlRequest) -> BackgroundJob:
-    params = validate_crawl_request(request)
-    job = BackgroundJob(type="crawl", status="queued", params=params, progress_total=request.max_pages)
+def _enqueue(session: Session, job: BackgroundJob) -> BackgroundJob:
+    """Insert the queued job and COMMIT, then publish its task (LLD §5.4). Broker down: failed + 503."""
     session.add(job)
     session.commit()  # commit first, so the worker can always find the row
     session.refresh(job)
 
     try:
-        task_id = publish_task("crawl", job.background_job_id)
+        task_id = publish_task(job.type, job.background_job_id)
     except Exception as exc:
-        logger.error("Could not publish crawl task for %s: %s", job.background_job_id, type(exc).__name__)
+        logger.error("Could not publish %s task for %s: %s", job.type, job.background_job_id, type(exc).__name__)
         session.execute(
             update(BackgroundJob)
             .where(BackgroundJob.background_job_id == job.background_job_id, BackgroundJob.status == "queued")
@@ -106,6 +107,50 @@ def create_crawl_job(session: Session, request: CrawlRequest) -> BackgroundJob:
                     .values(celery_task_id=task_id))
     session.commit()
     return job
+
+
+def create_crawl_job(session: Session, request: CrawlRequest) -> BackgroundJob:
+    params = validate_crawl_request(request)
+    return _enqueue(session, BackgroundJob(type="crawl", status="queued", params=params,
+                                           progress_total=request.max_pages))
+
+
+def create_resume_job(session: Session, files: list[IncomingFile]) -> tuple[BackgroundJob, list[AcceptedFile],
+                                                                                   list[RejectedFile]]:
+    """Check and store each uploaded file, then queue one `resume` job for the accepted ones (LLD §6.2).
+
+    A rejected file does not stop the others. With no accepted file, nothing is stored and no job
+    is created: 422 NO_VALID_FILES with every file's reason. Files are identified by their position
+    in the request (`index`), never by name. The job's params list the stored files by upload ID
+    and generated storage name only; the original names wait in each upload's metadata file for
+    the worker.
+    """
+    settings = get_settings()
+    if not files:
+        raise _invalid("body.files", "at least one file is required")
+    if len(files) > settings.max_upload_files:
+        raise _invalid("body.files", f"at most {settings.max_upload_files} files per request (MAX_UPLOAD_FILES)")
+
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    accepted: list[AcceptedFile] = []
+    rejected: list[RejectedFile] = []
+    try:
+        for index, incoming in enumerate(files):
+            result = save_upload(incoming.stream, incoming.filename, incoming.content_type, settings.upload_dir,
+                                 max_bytes, index=index)
+            (accepted if isinstance(result, AcceptedFile) else rejected).append(result)
+        if not accepted:
+            raise AppError(422, "NO_VALID_FILES", "No file was accepted, so no job was created.",
+                           {"rejected_files": [asdict(item) for item in rejected]})  # index, code, message
+        params = {"files": [{"upload_id": a.upload_id, "stored_file": stored_name(a.upload_id),
+                             "size_bytes": a.size_bytes} for a in accepted]}
+        job = _enqueue(session, BackgroundJob(type="resume", status="queued", params=params,
+                                              progress_total=len(accepted)))
+    except BaseException:
+        delete_stored(settings.upload_dir, accepted)  # no job will process them (e.g. broker down: 503)
+        raise
+    logger.info("Resume job %s queued: %d files accepted, %d rejected", job.background_job_id, len(accepted), len(rejected))
+    return job, accepted, rejected
 
 
 # --- Read --------------------------------------------------------------------------------------------

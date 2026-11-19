@@ -5,4 +5,5 @@
 *.egg-info/
 tests/
 uploads/
+sample-resumes/
 .env

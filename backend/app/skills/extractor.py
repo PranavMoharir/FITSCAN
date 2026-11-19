@@ -12,6 +12,10 @@ Steps for any text:
 For jobs, the description is then split by headings ("Requirements", "Nice to have", ...) and by
 inline qualifiers ("Docker is a plus"). Skills not marked nice-to-have are required, and a skill
 found in both groups is required.
+
+For resumes (`extract_resume_skills`), there is one set of skills. The Skills section and table
+cells are skill context (like a job's Requirements section); the rest of the text is searched
+with the normal rules.
 """
 
 import re
@@ -167,3 +171,43 @@ def extract_job_skills(
 
     nice -= required  # required wins
     return JobSkills(sorted(required), sorted(nice), unmatched)
+
+
+@dataclass
+class ResumeSkills:
+    skills: list[str] = field(default_factory=list)
+    unmatched: list[str] = field(default_factory=list)  # Skills-section items that matched no alias
+
+
+def _private(term: str, private_terms: list[str]) -> bool:
+    """A term that could identify the person, so it must never reach the unmatched-term log."""
+    if "@" in term or "http" in term or "www." in term or re.search(r"\d{3}", term):
+        return True
+    return any(p and p in term for p in private_terms)
+
+
+def extract_resume_skills(
+    full_text: str | None,
+    skills_section: str | None = None,
+    table_cells: list[str] | None = None,
+    private_terms: list[str] | None = None,
+) -> ResumeSkills:
+    """Canonical skills of a resume (LLD §6.6, §6.8): the Skills section, table cells and full text.
+
+    The unmatched-term report (LLD §6.9) uses only Skills-section items, and drops anything that
+    looks personal (an email, a URL, a number, or part of the candidate's name, email, phone or
+    city, passed as `private_terms`), because these terms are written to the job log.
+    """
+    names: set[str] = set()
+    for cell in table_cells or []:
+        names.update(m.canonical for m in find_skills(cell, skill_section=True))
+    if skills_section:
+        names.update(m.canonical for m in find_skills(skills_section, skill_section=True))
+    if full_text:
+        names.update(m.canonical for m in find_skills(full_text))
+
+    private = [normalize_text(term).strip() for term in private_terms or [] if term and len(term.strip()) >= 3]
+    unmatched = []
+    for line in (skills_section or "").splitlines():
+        unmatched.extend(term for term in _unmatched_items(line) if not _private(term, private))
+    return ResumeSkills(sorted(names), unmatched)
