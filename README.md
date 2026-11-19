@@ -6,13 +6,13 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 
 ## Status
 
-**Phases 1–5 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, and the matching engine. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
+**Phases 1–6 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, and the search, detail and export API. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
 
 | Works now | Not built yet (later phases) |
 |---|---|
-| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | Search and export endpoints, `GET /skills`, `GET /candidates`, `GET /jobs`, the detail routes |
-| The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | UI pages (background jobs, jobs, candidates, upload form, detail pages) |
-| Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | `samples/`, `DATA_SOURCES.md`, `AI_USAGE.md` |
+| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | UI pages (background jobs, jobs, candidates, upload form, detail pages) |
+| The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | `samples/`, `DATA_SOURCES.md`, `AI_USAGE.md` |
+| Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | |
 | Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | |
 | Extractors: Fake Python Jobs, the mock site (static and JavaScript), generic JSON-LD | |
 | Job validation, de-duplication (upsert by `dedup_key`), skills taxonomy and job skills | |
@@ -20,6 +20,8 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 | PDF parsing: one- and two-column layouts, tables, garbled text, OCR of scanned pages (Tesseract) | |
 | Candidate fields, skills, validation, de-duplication (same file skipped, same email updated) | |
 | Matching: every candidate against every job, exact scores, explanations, TF-IDF tie-breaker; top 10 in both directions | |
+| Search and detail: `GET /jobs`, `/jobs/{id}`, `/candidates`, `/candidates/{id}`, `/skills`; filters, sorting, paging | |
+| Exports: jobs, candidates and the match table as CSV or JSON, streamed, with formula-injection protection | |
 | `GET /health`, OpenAPI docs at `/docs`, one error envelope for every error | |
 
 The sections the brief asks for that are not here yet (known limitations, time spent) are added as the remaining features are built.
@@ -110,6 +112,51 @@ The answer is `202 Accepted` with the `match` job; follow it like a crawl (one p
 | `GET /jobs/{id}/matches?limit=10` | A job's top candidates |
 
 Each item has its `rank`, the `score` (2 decimals), `matched_skills` and `missing_skills` (each `{skill, level}`), the `breakdown` of the four components, `text_similarity` and the `explanation`. `computed_at` says when the matches were computed. Matches are not recomputed automatically: run the job again after new crawls or uploads.
+
+### Search, details and exports
+
+```bash
+curl "http://localhost:8000/jobs?q=python&skill=js&location=bangalore&max_required_years=3&sort=title&page=1&page_size=20"
+curl "http://localhost:8000/jobs/{job_id}"
+curl "http://localhost:8000/candidates?skill=reactjs&city=pune&sort=years_experience"
+curl "http://localhost:8000/candidates/{candidate_id}"
+curl "http://localhost:8000/skills"
+curl -OJ "http://localhost:8000/exports/jobs?format=csv&skill=python"       # saves jobs_<UTC time>.csv
+curl -OJ "http://localhost:8000/exports/candidates?format=json"
+curl -OJ "http://localhost:8000/exports/matches?format=csv&top=10"          # the match table (samples/)
+```
+
+| Endpoint | Filters (combined with AND) | Sort (`sort`, `order`) |
+|---|---|---|
+| `GET /jobs` | `q` (title or company), `skill`, `location`, `job_type`, `max_required_years` | `posted_date` (default, newest first) or `title` |
+| `GET /candidates` | `q` (name or current title), `skill`, `city` | `name` (default, A to Z) or `years_experience` |
+
+- **Filters.**
+  - Text filters are case-insensitive substrings.
+  - `skill` accepts aliases ("js" finds JavaScript, "reactjs" finds React) and matches a job's required or nice-to-have skills. A term that isn't a known skill finds nothing.
+  - A known city matches all its spellings ("bangalore" finds "Bengaluru").
+  - `max_required_years=3` returns jobs asking for at most 3 years, plus jobs with no minimum.
+  - A blank filter counts as not set.
+- **Sorting and paging.**
+  - Missing values sort last, and equal values are ordered by ID.
+  - `page` starts at 1. `page_size` defaults to 20 and is at most 100.
+  - Lists answer `{items, total, page, page_size}`, and a page after the last has no items.
+- **Errors.** An unknown query parameter or an invalid value gives 422. An unknown ID gives 404.
+- **Details.** `GET /jobs/{id}` returns every field of the job with both skill lists. `GET /candidates/{id}` returns the candidate's fields and parse warnings. Their matches come from the `/matches` routes above.
+- **Privacy.** Candidate responses carry the candidate fields of the brief (name, email, phone, city, title, skills, years, education, summary, source file name, OCR flag). They never include the stored file path or the resume text.
+- **Exports.**
+  - Each export takes the same filters and sort as its list, without paging; any other parameter (including `page`) gives 422:
+
+    | Export | Required | Filters | `sort` | `order` | Other |
+    |---|---|---|---|---|---|
+    | `/exports/jobs` | `format` = `csv` or `json` | `q`, `skill`, `location`, `job_type`, `max_required_years` | `posted_date` (default) or `title` | `asc` or `desc`; default `desc` for `posted_date`, `asc` for `title` | |
+    | `/exports/candidates` | `format` | `q`, `skill`, `city` | `name` (default) or `years_experience` | `asc` or `desc`; default `asc` for `name`, `desc` for `years_experience` | |
+    | `/exports/matches` | `format` | `q`, `skill`, `city` (choose the candidates) | `name` (default) or `years_experience` (order of the candidates) | as `/exports/candidates` | `top` = 1–10, default 10 (jobs per candidate) |
+
+  - The match table reads the stored matches and ranks each candidate's jobs exactly like `/candidates/{id}/matches`. Its rows follow the candidates in the chosen order, then the rank. For example, `/exports/matches?format=csv&top=3&sort=years_experience&order=desc` lists the most experienced candidate's top 3 first.
+  - Files are streamed and named `<entity>_<UTC time>.<csv|json>`.
+  - In CSV, lists are joined with `; ` and dates are ISO 8601. A text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet does not run it as a formula.
+  - An empty export is the CSV header only, or `[]`.
 
 ### Services
 
@@ -273,7 +320,7 @@ cd backend && pytest            # unit tests, offline: no database, Redis or int
 cd frontend && npm run build    # TypeScript type check + production build
 ```
 
-The unit tests cover the crawler (BFS, normalization, robots.txt, rate limiting, retries, 429/5xx/4xx, redirects, SSRF), the extractors on saved pages in `tests/fixtures/html/`, skill extraction, job validation, and resume parsing: upload checks (signature, streamed size limit, names as data only), PDF opening (corrupt, encrypted, page limit), reading order of one- and two-column pages, tables, the garbled-text fallback, scanned-page detection and OCR failures, every candidate field (including overlapping employment dates against a fixed "today") and `CandidateRecord` validation, and matching: the worked example, every scoring edge case (including jobs without skills), experience and location rules (remote, hybrid, unknown and unlisted cities, Bangalore = Bengaluru), exact scores, display rounding, the explanation text against the breakdown, the TF-IDF tie-breaker, the ranking order and the four score-precision cases of LLD §9.7. They never use the internet: pages come from `httpx.MockTransport`, DNS is faked, and resumes are synthetic PDFs generated by `tests/resume_pdfs.py` (invented people only; no real resume is used).
+The unit tests cover the crawler (BFS, normalization, robots.txt, rate limiting, retries, 429/5xx/4xx, redirects, SSRF), the extractors on saved pages in `tests/fixtures/html/`, skill extraction, job validation, and resume parsing: upload checks (signature, streamed size limit, names as data only), PDF opening (corrupt, encrypted, page limit), reading order of one- and two-column pages, tables, the garbled-text fallback, scanned-page detection and OCR failures, every candidate field (including overlapping employment dates against a fixed "today") and `CandidateRecord` validation, and matching: the worked example, every scoring edge case (including jobs without skills), experience and location rules (remote, hybrid, unknown and unlisted cities, Bangalore = Bengaluru), exact scores, display rounding, the explanation text against the breakdown, the TF-IDF tie-breaker, the ranking order and the four score-precision cases of LLD §9.7, and search and export: parameter validation (422 for every bad or unknown parameter), the SQL of each filter and sort, CSV cell safety, quoting and filenames, and JSON streaming. They never use the internet: pages come from `httpx.MockTransport`, DNS is faked, and resumes are synthetic PDFs generated by `tests/resume_pdfs.py` (invented people only; no real resume is used).
 
 Skill extraction is measured on hand-labelled examples (LLD §6.9): job descriptions give precision 1.00 and recall 1.00; resumes give precision 1.00 and recall 0.95. The one known miss is "Swift" at the start of a sentence, which the ambiguous-word rule ignores outside a skill context.
 
@@ -284,6 +331,8 @@ Skill extraction is measured on hand-labelled examples (LLD §6.9): job descript
 - the upload retention command against real jobs and candidates: dry run, `--delete` for every rule, and a second run that changes nothing;
 - a full crawl through the API, with Celery running the real `crawl` task in-process against the mock site;
 - a full resume upload through the API with the real `resume` task: accepted and rejected files, UUID storage, progress, logs, duplicates, same-email updates, cancellation between files, OCR, a broker outage, and a check that no log line contains names, contact details, file names or resume text;
+- search and detail: every filter on its own and combined, aliases and city spellings, literal `%` and `_`, sorting with missing values last, page boundaries, the exact response fields, two queries per page and one per detail read, 404 and 422, no internal or private columns, and `/skills`;
+- exports: headers and filenames, empty exports, the same rows and order as the search, CSV quoting of commas, quotes and line breaks, formula-injection protection (CSV only), streaming in small batches, the match table against the stored matches and `/candidates/{id}/matches` (rank, score, breakdown, explanation), `top` and the candidate filters, and a check that no search, detail or export request starts a match run or changes a match;
 - a full match run through the API with the real `match` task: every pair stored with one `computed_at`, the edge cases in the database, reruns that replace every row, cancellation and failures that keep the previous matches, two runs saving at the same time, the heartbeat before the final write, no personal data in the logs, both top-10 routes (shape, limit, 404), the API order against the ranking rule on data with many ties, and the score-precision cases through PostgreSQL.
 
 They are skipped unless `TEST_DATABASE_URL` is set. With the dev override running (step 1 of *Local development*):
@@ -341,11 +390,11 @@ The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates 
 │   │   ├── main.py           # FastAPI app: routers, CORS, error handlers
 │   │   ├── config.py         # settings from environment variables
 │   │   ├── errors.py         # standard error envelope
-│   │   ├── api/              # routers: health, background_jobs, jobs and candidates (match routes); upload_limit
+│   │   ├── api/              # routers: health, background_jobs, jobs, candidates, skills, exports; upload_limit
 │   │   ├── schemas/          # Pydantic request/response models, JobRecord, CandidateRecord
 │   │   ├── db/               # engine, sessions, Base (constraint naming)
 │   │   ├── models/           # SQLAlchemy models: the eight tables of LLD Part 3
-│   │   ├── services/         # background-job control (crawl, resume, match), stale-job checks, top-10 match queries, upload retention
+│   │   ├── services/         # background-job control, stale-job checks, search, top-10 match queries, export, upload retention
 │   │   ├── worker/           # Celery app, crawl, resume and match tasks, state/progress/log helpers
 │   │   ├── crawler/          # BFS frontier, fetcher, robots, rate limiter, URLs, SSRF, browser, pipeline
 │   │   ├── extractors/       # plug-ins: base, registry, generic, fake_python_jobs, mock_static, mock_dynamic
@@ -388,3 +437,5 @@ The full planned layout is in [LLD Part 2](docs/LLD/02_Project_Structure.md).
 | A resume fails with "the file has N pages; at most 20 are allowed" | Raise `PDF_MAX_PAGES` in `.env` and restart the worker. |
 | `GET /candidates/{id}/matches` returns `"items": []` and `"computed_at": null` | No match run has included this candidate yet (for example it was uploaded after the last run). Run `POST /background-jobs/match`. |
 | A match job fails with "No candidates to match" or "No jobs to match" | Upload resumes or run a crawl first; the previous matches are unchanged. |
+| A search or export returns 422 "Extra inputs are not permitted" for `query.<name>` | That parameter is not a filter of this endpoint (for example `company` on `/jobs`: use `q`, which searches titles and companies; `location` is `city` on `/candidates`; exports take no `page`). |
+| `GET /jobs?skill=…` returns nothing although the word is in job texts | `skill` only matches skills of the taxonomy (`GET /skills`), by name or alias. Use `q` to search titles and companies. |

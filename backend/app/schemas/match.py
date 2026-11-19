@@ -11,6 +11,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field
 
 from app.matching import scoring
+from app.schemas.candidate import CandidateFilterParams
+from app.schemas.common import ExportFormat
 
 SkillLevel = Literal["required", "nice_to_have"]
 SkillRule = Literal[scoring.RATIO, scoring.NONE_LISTED, scoring.NO_REQUIRED_IDENTIFIED, scoring.NO_SKILLS_IDENTIFIED]
@@ -109,3 +111,32 @@ class JobMatches(BaseModel):
     job_id: uuid.UUID
     computed_at: datetime | None
     items: list[CandidateMatch]
+
+
+# --- GET /exports/matches: the match table, top N jobs per candidate (LLD §4.6, decision LLD-10) ------
+
+
+class MatchExportParams(CandidateFilterParams):
+    """The /candidates filters choose the candidates; `top` is how many of each one's jobs (ranked as in
+    GET /candidates/{id}/matches)."""
+
+    format: ExportFormat
+    top: int = Field(MAX_MATCHES, ge=1, le=MAX_MATCHES, description="Jobs per candidate (default and maximum 10)")
+
+
+class MatchExportRow(BaseModel):
+    """One row of the match table: (candidate, rank, job, score, skills, breakdown, explanation)."""
+
+    candidate_id: uuid.UUID
+    candidate_name: str | None
+    rank: Rank
+    job_id: uuid.UUID
+    job_title: str
+    company: str | None
+    score: DisplayScore
+    matched_skills: list[SkillRef]
+    missing_skills: list[SkillRef]
+    breakdown: Breakdown
+    text_similarity: Similarity
+    explanation: str
+    computed_at: datetime

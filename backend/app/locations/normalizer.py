@@ -52,3 +52,13 @@ def load_cities(path: Path = CITIES_FILE) -> CityList:
 def normalize_city(text: str | None) -> str | None:
     """Canonical city name found in a candidate's or a job's location text, or None."""
     return load_cities().find(text)
+
+
+@lru_cache
+def spellings_of(canonical: str, path: Path = CITIES_FILE) -> tuple[str, ...]:
+    """A known city's canonical name and its other spellings, as written in cities.json.
+
+    Used by search filters: a location filter "Bangalore" also finds jobs in "Bengaluru".
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return (canonical, *data.get(canonical, []))

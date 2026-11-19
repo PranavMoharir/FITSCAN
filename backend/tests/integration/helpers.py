@@ -58,6 +58,39 @@ def make_candidate(**values) -> Candidate:
     return Candidate(**{**defaults, **values})
 
 
+def insert_job(*, required=(), nice=(), **values) -> uuid.UUID:
+    """Commit a job with any column values and its skills, through the application's sessions (app_db)."""
+    from app.db.session import SessionLocal
+    from app.models import JobSkill
+    from app.skills.sync import skill_ids
+
+    with SessionLocal() as session:
+        job = make_job(**values)
+        session.add(job)
+        session.flush()
+        ids = skill_ids(session, [*required, *nice])
+        session.add_all([JobSkill(job_id=job.job_id, skill_id=ids[n], requirement_level="required") for n in required])
+        session.add_all([JobSkill(job_id=job.job_id, skill_id=ids[n], requirement_level="nice_to_have") for n in nice])
+        session.commit()
+        return job.job_id
+
+
+def insert_candidate(*, skills=(), **values) -> uuid.UUID:
+    """Commit a candidate with any column values and its skills, through the application's sessions (app_db)."""
+    from app.db.session import SessionLocal
+    from app.models import CandidateSkill
+    from app.skills.sync import skill_ids
+
+    with SessionLocal() as session:
+        person = make_candidate(**values)
+        session.add(person)
+        session.flush()
+        ids = skill_ids(session, skills)
+        session.add_all([CandidateSkill(candidate_id=person.candidate_id, skill_id=ids[n]) for n in skills])
+        session.commit()
+        return person.candidate_id
+
+
 def make_match(candidate: Candidate, job: Job, **values) -> Match:
     defaults = {
         "candidate": candidate,

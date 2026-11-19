@@ -799,7 +799,7 @@ The algorithm is described in Section 10.
 | Dates | ISO 8601 | ISO 8601 strings |
 | Numbers | Plain numbers | JSON numbers |
 | Encoding | UTF-8 | UTF-8 |
-| Safety | Cells starting with `=`, `+`, `-` or `@` are prefixed with `'` to prevent formula injection | Not applicable |
+| Safety | Text cells starting with `=`, `+`, `-` or `@`, or with a tab or carriage return, are prefixed with `'` to prevent formula injection; numbers are never changed | Not applicable |
 
 Streaming row by row from a server-side cursor keeps memory use flat regardless of export size.
 
@@ -1544,8 +1544,8 @@ HTTP/1.1 202 Accepted
       "job_type": "full_time",
       "salary": { "min": 900000, "max": 1400000, "currency": "INR", "period": "year" },
       "posted_date": "2026-11-03",
-      "required_skills": ["Python", "FastAPI", "PostgreSQL", "Docker"],
-      "nice_to_have_skills": ["Redis", "Kubernetes"],
+      "required_skills": ["Docker", "FastAPI", "PostgreSQL", "Python"],
+      "nice_to_have_skills": ["Kubernetes", "Redis"],
       "min_experience_years": 3,
       "apply_url": "https://jobs.example.com/backend-python-developer",
       "source": "mock_static"
@@ -1556,6 +1556,8 @@ HTTP/1.1 202 Accepted
 ```
 
 **Search candidates**: `GET /candidates?q=developer&skill=react&city=pune` returns the same envelope with candidate fields (`candidate_id`, `name`, `email`, `phone`, `city`, `current_title`, `skills`, `years_experience`, `education`, `summary`, `source_file`, `parsed_with_ocr`).
+
+`q` searches job titles and companies, or candidate names and current titles. `skill` accepts aliases and matches either skill level. A known city matches all its spellings. Skill lists are alphabetical. The detail routes `GET /jobs/{id}` and `GET /candidates/{id}` add the remaining fields of the record (for a candidate, the parse warnings); internal columns such as the stored file path and the resume text are never returned. The exact filter, sort, paging and export rules are in LLD §4.4–4.7.
 
 ### 12.5 Match Endpoints: Examples
 
@@ -1792,7 +1794,7 @@ sequenceDiagram
 | Internal and private network protection (SSRF) | Resolve each host and refuse loopback, private, link-local, multicast and reserved addresses (Python `ipaddress`), for both httpx and Playwright (request interception). **Exception:** an explicit environment setting (for example `CRAWLER_PRIVATE_HOST_ALLOWLIST=mock-site`) allows the Docker-internal mock site. |
 | Secrets in environment variables | Database password and similar settings come from `.env` (git-ignored). `.env.example` contains placeholders only. |
 | Appropriate API error messages | Clear, user-actionable messages. Stack traces and internal paths are never returned. Full details go to server logs. |
-| CSV export | Neutralize cells starting with `=`, `+`, `-` or `@` to prevent formula injection. |
+| CSV export | Neutralize text cells starting with `=`, `+`, `-` or `@`, or with a tab or carriage return, to prevent formula injection. |
 | CORS | Allow only the configured frontend origin. |
 | Network exposure | Only the frontend and API ports are published to the host. PostgreSQL and Redis stay on the internal Compose network. |
 | Container hygiene | Run application containers as a non-root user. Pin base images. |
