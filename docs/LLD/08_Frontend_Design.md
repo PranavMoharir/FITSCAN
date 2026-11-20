@@ -20,7 +20,9 @@ Each page is one component in `src/pages/`:
 
 | Route | Page | What it shows and does |
 |---|---|---|
-| `/` or `/background-jobs` | Background jobs | Table of background jobs: type, status badge, progress bar, timestamps. "New crawl" form (seed URL, `max_depth`, `max_pages`, allowed domains). "Upload resumes" dialog (several files at once). "Recompute matches" button. Cancel button on active jobs. |
+| `/` | Landing page | The public FITSCAN marketing page: what the platform does, an interactive product preview built on sample data (no API calls), and links into the application. Unknown paths redirect here. |
+| `/app` | Application entry | The existing entry point into the FITSCAN application, linked from the landing page. Today it shows the system status (API, PostgreSQL and Redis, from `GET /health`); it will lead to the Background jobs page once that page exists. |
+| `/background-jobs` | Background jobs | Table of background jobs: type, status badge, progress bar, timestamps. "New crawl" form (seed URL, `max_depth`, `max_pages`, allowed domains). "Upload resumes" dialog (several files at once). "Recompute matches" button. Cancel button on active jobs. |
 | `/background-jobs/:id` | Background job detail | The job's parameters, succeeded and failed counters, failure reason if any, and a live log viewer with a level filter |
 | `/jobs` | Jobs | Searchable, paginated table: title, company, location, job type, posted date, required skills. Export CSV / JSON buttons. |
 | `/jobs/:id` | Job detail | Job fields, then the top 10 candidates. Each shows the score, matched skills (green badges), missing skills (red badges) and the explanation. |

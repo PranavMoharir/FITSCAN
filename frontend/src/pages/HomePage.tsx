@@ -1,6 +1,6 @@
-// Phase 1 landing page: proves that the frontend builds, runs and can reach the API.
-// It calls GET /health and shows whether the API, PostgreSQL and Redis are reachable.
-// The Background jobs page (LLD §8.2) replaces this page at "/" in a later phase.
+// Application entry at /app (Phase 1 status page): proves that the frontend builds, runs and
+// can reach the API. It calls GET /health and shows whether the API, PostgreSQL and Redis are
+// reachable. The Background jobs page (LLD §8.2) takes over the /app entry in a later phase.
 
 import { useCallback, useEffect, useState } from 'react'
 

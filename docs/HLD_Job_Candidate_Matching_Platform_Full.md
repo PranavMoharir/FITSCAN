@@ -487,7 +487,9 @@ flowchart TB
 
 | Route | Page | Main content |
 |---|---|---|
-| `/` or `/background-jobs` | Background jobs | Table of background jobs with type, status badge, progress bar and timestamps. "New crawl" form (seed URL, max_depth, max_pages, allowed domains). "Upload resumes" dialog (multiple files). "Recompute matches" button. Cancel button for active jobs. |
+| `/` | Landing page | Public FITSCAN marketing page: what the platform does, an interactive product preview built on sample data (no API calls), and links into the application. Unknown paths redirect here. |
+| `/app` | Application entry | Existing entry point into the application, linked from the landing page. Shows the system status (API, PostgreSQL and Redis, from `GET /health`) until the Background jobs page exists, then leads to that page. |
+| `/background-jobs` | Background jobs | Table of background jobs with type, status badge, progress bar and timestamps. "New crawl" form (seed URL, max_depth, max_pages, allowed domains). "Upload resumes" dialog (multiple files). "Recompute matches" button. Cancel button for active jobs. |
 | `/background-jobs/:id` | Background job detail | Parameters, counters (succeeded, failed), live log viewer with level filter. |
 | `/jobs` | Jobs | Searchable, paginated table (title, company, location, job type, posted date, required skills). Export CSV/JSON. |
 | `/jobs/:id` | Job detail | Job fields and a list of the top 10 candidates, each with score, matched skills (green badges), missing skills (red badges) and explanation. |

@@ -4,13 +4,19 @@ A platform that collects job openings by crawling, reads candidate resumes from 
 
 The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Matching_Platform_Full.md), the [LLD](docs/LLD/README.md) and the [architecture decisions](docs/ARCHITECTURE_DECISIONS.md).
 
+**Stack:**
+- Backend: Python 3.12, FastAPI, Pydantic, SQLAlchemy 2 and Alembic on PostgreSQL 17; Celery workers with Redis as the broker.
+- Crawling, parsing and matching: httpx and Playwright (headless Chromium); PyMuPDF, pdfplumber and Tesseract OCR; a weighted scoring formula, with scikit-learn TF-IDF used only to order exactly equal scores.
+- Frontend: React 19, TypeScript, Vite, Tailwind CSS 4, shadcn/ui (Radix UI), lucide-react, React Router and Framer Motion.
+- Deployment: Docker Compose (API, worker, PostgreSQL, Redis, frontend and an optional mock job site).
+
 ## Status
 
-**Phases 1–6 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, and the search, detail and export API. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
+**Phases 1–7 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, and the public landing page. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
 
 | Works now | Not built yet (later phases) |
 |---|---|
-| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | UI pages (background jobs, jobs, candidates, upload form, detail pages) |
+| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | Application UI pages (background jobs, jobs, candidates, upload form, detail pages) |
 | The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | `samples/`, `DATA_SOURCES.md`, `AI_USAGE.md` |
 | Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | |
 | Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | |
@@ -23,6 +29,7 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 | Search and detail: `GET /jobs`, `/jobs/{id}`, `/candidates`, `/candidates/{id}`, `/skills`; filters, sorting, paging | |
 | Exports: jobs, candidates and the match table as CSV or JSON, streamed, with formula-injection protection | |
 | `GET /health`, OpenAPI docs at `/docs`, one error envelope for every error | |
+| Frontend: public landing page at `/` (sample data only, no API calls) and the application entry at `/app` (system status) | |
 
 The sections the brief asks for that are not here yet (known limitations, time spent) are added as the remaining features are built.
 
@@ -37,7 +44,7 @@ docker compose up --build
 
 | URL | What it is |
 |---|---|
-| http://localhost:5173 | Web UI (landing page with system status) |
+| http://localhost:5173 | Web UI: the FITSCAN landing page; the application entry (system status for now) is at `/app` |
 | http://localhost:8000/docs | Interactive API documentation |
 | http://localhost:8000/health | Health check: `{"status": "ok", "database": "ok", "redis": "ok"}` |
 
@@ -409,9 +416,12 @@ The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates 
 │   ├── package.json, vite.config.ts, tsconfig*.json, components.json
 │   └── src/
 │       ├── api/client.ts     # typed API client
+│       ├── App.tsx           # routes: / landing page, /app application entry
 │       ├── components/ui/    # shadcn/ui components (button, card, badge)
+│       ├── components/sections/, components/landing/  # landing page sections and their parts
 │       ├── lib/utils.ts      # shadcn/ui helper
-│       ├── pages/HomePage.tsx # Phase 1 landing page
+│       ├── pages/LandingPage.tsx # marketing landing page (/), sample data only
+│       ├── pages/HomePage.tsx # application entry (/app): system status for now
 │       ├── hooks/  types/
 │       └── main.tsx
 └── docs/                     # HLD, LLD, ADRs, diagrams

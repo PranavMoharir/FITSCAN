@@ -128,3 +128,98 @@
     @apply font-sans;
     }
 }
+
+/* ------------------------------------------------------------------------------------------
+ * Landing page ("/"): a scoped dark theme.
+ * shadcn/ui components inside `.landing` read these variables, so Button and Badge turn dark
+ * and violet there, while the application pages keep the light theme defined above.
+ * In the base layer, so utility classes (for example a dialog overlay's colour) still win.
+ * ------------------------------------------------------------------------------------------ */
+@layer base {
+.landing {
+    color-scheme: dark;
+    --background: #0a0a0f;
+    --foreground: #f5f5f7;
+    --card: #14141e;
+    --card-foreground: #f5f5f7;
+    --popover: #14141e;
+    --popover-foreground: #f5f5f7;
+    --primary: #6d4aff;
+    --primary-foreground: #ffffff;
+    --secondary: #1a1a27;
+    --secondary-foreground: #f5f5f7;
+    --muted: #1a1a27;
+    --muted-foreground: #a1a1aa;
+    --accent: #1a1a27;
+    --accent-foreground: #f5f5f7;
+    --destructive: #f87171;
+    --border: rgb(255 255 255 / 0.09);
+    --input: rgb(255 255 255 / 0.12);
+    --ring: #a594ff;
+    /* Landing-only tokens. */
+    --surface: #101018;
+    --elevated: #1a1a27;
+    --subtle-foreground: #92929e; /* lighter than #71717a so small text keeps 4.5:1 on cards and tinted rows */
+    --brand: #7c5cff;
+    --brand-soft: #a594ff;
+    --brand-blue: #5b7cff;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "cv11", "ss01";
+}
+}
+
+@theme inline {
+    --color-surface: var(--surface);
+    --color-elevated: var(--elevated);
+    --color-subtle-foreground: var(--subtle-foreground);
+    --color-brand: var(--brand);
+    --color-brand-soft: var(--brand-soft);
+    --color-brand-blue: var(--brand-blue);
+
+    --animate-marquee: marquee 40s linear infinite;
+    --animate-drift: drift 24s ease-in-out infinite alternate;
+    --animate-float: float 7s ease-in-out infinite;
+    --animate-dash-flow: dash-flow 3s linear infinite;
+    --animate-pulse-ring: pulse-ring 3.6s ease-out infinite;
+
+    @keyframes marquee {
+        from { transform: translateX(0); }
+        to { transform: translateX(-50%); }
+    }
+    @keyframes drift {
+        from { transform: translate3d(0, 0, 0) scale(1); }
+        to { transform: translate3d(4%, 6%, 0) scale(1.1); }
+    }
+    @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-8px); }
+    }
+    @keyframes dash-flow {
+        from { stroke-dashoffset: 100; }
+        to { stroke-dashoffset: 0; }
+    }
+    @keyframes pulse-ring {
+        from { transform: scale(0.9); opacity: 0.55; }
+        to { transform: scale(1.7); opacity: 0; }
+    }
+}
+
+body:has(.landing) {
+    background-color: #0a0a0f;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    html:has(.landing) {
+        scroll-behavior: smooth;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .landing *,
+    .landing *::before,
+    .landing *::after {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+    }
+}
