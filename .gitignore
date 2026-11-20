@@ -2,6 +2,10 @@
 .env
 .env.*
 !.env.example
+# Other secrets: private keys and local AI-assistant settings
+*.pem
+*.key
+.claude/settings.local.json
 
 # Python
 .venv/
@@ -17,10 +21,23 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Uploaded resumes when the backend runs outside Docker
-backend/uploads/
+# Uploaded resumes (personal data) when the backend runs outside Docker. UPLOAD_DIR=./uploads
+# is relative to where the backend starts, so this matches backend/uploads/ and ./uploads/.
+uploads/
 # Synthetic sample resumes written by `python -m tests.resume_pdfs sample-resumes`
 backend/sample-resumes/
+
+# Design previews and screenshots (Oil UI design workflow)
+.oil-ui/
+shots/
+
+# Personal study notes: kept locally, not published (still present in the first five commits).
+LEARNING_NOTES.md
+
+# Locally installed AI-assistant skills. skills-lock.json (tracked) records the source and
+# commit, so a skill can be reinstalled; the copies and their machine-specific links are local.
+.agents/
+.claude/skills/
 
 # Logs
 *.log
