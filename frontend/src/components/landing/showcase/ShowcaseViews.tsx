@@ -6,23 +6,19 @@ import { formatPercent, formatScore, type DemoCandidate, type DemoJob, type Demo
 import { cn } from '@/lib/utils'
 
 export type ShowcaseTab = 'candidates' | 'jobs' | 'matches'
-export type Accent = 'violet' | 'blue' | 'emerald'
+export type PreviewTheme = 'cream' | 'ink' | 'wine'
 export type Density = 'compact' | 'comfortable' | 'detailed'
 export type Display = 'skills' | 'explanation'
 
-export const ACCENTS: Record<Accent, { label: string; solid: string; soft: string; tint: string }> = {
-  violet: { label: 'Violet', solid: '#7c5cff', soft: '#a594ff', tint: 'rgb(124 92 255 / 0.16)' },
-  blue: { label: 'Blue', solid: '#3b82f6', soft: '#93c5fd', tint: 'rgb(59 130 246 / 0.16)' },
-  emerald: { label: 'Emerald', solid: '#10b981', soft: '#6ee7b7', tint: 'rgb(16 185 129 / 0.16)' },
+/** The preview window can take any of the three palette surfaces. */
+export const THEMES: Record<PreviewTheme, { label: string; surface: string; swatch: string }> = {
+  cream: { label: 'Cream', surface: 'surface-cream', swatch: '#f8f1e7' },
+  ink: { label: 'Black', surface: 'surface-ink', swatch: '#0b0b0b' },
+  wine: { label: 'Burgundy', surface: 'surface-wine', swatch: '#5b0f18' },
 }
 
-/** Bar colours inside the demo follow the chosen accent. */
-export const DEMO_BAR_COLORS = [
-  'var(--demo-accent)',
-  'var(--demo-accent-soft)',
-  'color-mix(in oklab, var(--demo-accent) 45%, white)',
-  'rgb(255 255 255 / 0.5)',
-] as const
+/** Bar colours come from the preview window's surface. */
+export const DEMO_BAR_COLORS = ['var(--viz-1)', 'var(--viz-2)', 'var(--viz-3)', 'var(--viz-4)'] as const
 
 const DENSITY: Record<Density, { body: string; title: string; chips: number; rows: number; extra: boolean }> = {
   compact: { body: 'gap-4 p-4 text-[13px]', title: 'text-base', chips: 4, rows: 3, extra: false },
@@ -74,7 +70,7 @@ export function CandidateView({ candidate, matches, density, display }: ViewProp
   return (
     <div className={cn('grid', d.body)}>
       <header className="flex flex-wrap items-center gap-4">
-        <span className="grid size-12 place-items-center rounded-full text-sm font-semibold text-white" style={{ background: 'linear-gradient(135deg, var(--demo-accent), color-mix(in oklab, var(--demo-accent) 40%, #0a0a0f))' }}>
+        <span className="grid size-12 place-items-center rounded-full bg-accent-solid text-sm font-semibold text-background">
           {candidate.initials}
         </span>
         <div className="min-w-0 flex-1">
@@ -83,14 +79,14 @@ export function CandidateView({ candidate, matches, density, display }: ViewProp
             {candidate.title} · {candidate.city} · {candidate.years} yrs
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/10 px-2.5 py-1 text-xs text-muted-foreground">
           <FileText className="size-3.5" aria-hidden="true" />
           {candidate.source}
         </span>
       </header>
       {d.extra && (
         <p className="flex items-center gap-2 text-muted-foreground">
-          <GraduationCap className="size-4 text-[var(--demo-accent-soft)]" aria-hidden="true" />
+          <GraduationCap className="size-4 text-accent-ink" aria-hidden="true" />
           {candidate.education}
         </p>
       )}
@@ -102,7 +98,7 @@ export function CandidateView({ candidate, matches, density, display }: ViewProp
         <Label>Top matching jobs</Label>
         <ol className="space-y-2">
           {matches.slice(0, d.rows).map((match, i) => (
-            <li key={match.job.id} className={cn('rounded-xl border border-white/[0.06] bg-white/[0.02]', density === 'compact' ? 'p-3' : 'p-4')}>
+            <li key={match.job.id} className={cn('rounded-xl border border-foreground/[0.06] bg-foreground/[0.02]', density === 'compact' ? 'p-3' : 'p-4')}>
               <div className="flex items-center gap-3">
                 <span className="w-5 text-xs tabular-nums text-subtle-foreground">{i + 1}</span>
                 <div className="min-w-0 flex-1">
@@ -149,7 +145,7 @@ export function JobView({ job, ranking, selectedId, density, display }: ViewProp
             {job.minYears !== null && <span>{job.minYears}+ yrs</span>}
           </p>
         </div>
-        <span className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: 'var(--demo-accent-tint)', color: 'var(--demo-accent-soft)' }}>
+        <span className="rounded-full bg-accent-solid/10 px-2.5 py-1 text-xs font-medium text-accent-ink">
           Best match for the selected candidate
         </span>
       </header>
@@ -172,11 +168,10 @@ export function JobView({ job, ranking, selectedId, density, display }: ViewProp
               <li
                 key={match.candidate.id}
                 className={cn(
-                  'rounded-xl border bg-white/[0.02]',
+                  'rounded-xl border bg-foreground/[0.02]',
                   density === 'compact' ? 'p-3' : 'p-4',
-                  selected ? 'border-[var(--demo-accent)]/60 [&_.text-subtle-foreground]:text-muted-foreground' : 'border-white/[0.06]',
+                  selected ? 'border-accent-solid/45 bg-accent-solid/[0.07] [&_.text-subtle-foreground]:text-muted-foreground' : 'border-foreground/[0.06]',
                 )}
-                style={selected ? { backgroundColor: 'var(--demo-accent-tint)' } : undefined}
                 aria-current={selected || undefined}
               >
                 <div className="flex items-center gap-3">
@@ -262,8 +257,8 @@ export function MatchView({ match, density, display }: ViewProps & { match: Demo
         </>
       ) : (
         <>
-          <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 leading-relaxed text-muted-foreground">{match.explanation}</p>
-          <dl className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.06]">
+          <p className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] p-4 leading-relaxed text-muted-foreground">{match.explanation}</p>
+          <dl className="divide-y divide-foreground/[0.06] rounded-xl border border-foreground/[0.06]">
             {rows.map((row) => (
               <div key={row.label} className={cn('flex items-center justify-between gap-4', density === 'compact' ? 'px-3 py-2' : 'px-4 py-3')}>
                 <dt>

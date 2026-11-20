@@ -4,7 +4,7 @@ import { EASE_OUT } from '@/components/landing/Reveal'
 import type { DemoMatch } from '@/lib/demo-matches'
 import { cn } from '@/lib/utils'
 
-const DEFAULT_COLORS = ['var(--brand)', 'var(--brand-soft)', 'var(--brand-blue)', 'rgb(255 255 255 / 0.55)'] as const
+const DEFAULT_COLORS = ['var(--viz-1)', 'var(--viz-2)', 'var(--viz-3)', 'var(--viz-4)'] as const
 
 interface ScoreBarProps {
   match: DemoMatch
@@ -23,7 +23,7 @@ export function ScoreBar({ match, colors = DEFAULT_COLORS, className }: ScoreBar
     <div
       role="img"
       aria-label={`Score ${match.score.toFixed(2)} of 100`}
-      className={cn('flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-white/[0.06]', className)}
+      className={cn('flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-track', className)}
     >
       {parts.map((points, i) =>
         points > 0 ? (
@@ -58,7 +58,7 @@ export function ComponentBar({ label, detail, fit, color, delay = 0 }: Component
         <span className="font-medium">{label}</span>
         <span className="text-right text-muted-foreground tabular-nums">{detail}</span>
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-track">
         <motion.div
           className="h-full origin-left rounded-full"
           style={{ width: `${fit * 100}%`, backgroundColor: color }}

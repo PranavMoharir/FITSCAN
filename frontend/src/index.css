@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -130,56 +132,151 @@
 }
 
 /* ------------------------------------------------------------------------------------------
- * Landing page ("/"): a scoped dark theme.
- * shadcn/ui components inside `.landing` read these variables, so Button and Badge turn dark
- * and violet there, while the application pages keep the light theme defined above.
+ * Landing page ("/"): Burgundy Wine #5B0F18, Soft Cream #F8F1E7 and Deep Black #0B0B0B.
+ * Every section picks one surface: cream, warm, ink or wine. A surface sets the colour tokens
+ * (text, borders, cards, buttons, charts and the logo), so content inside it stays readable
+ * without per-element colours. shadcn/ui components read the same tokens.
  * In the base layer, so utility classes (for example a dialog overlay's colour) still win.
+ * The application pages keep the light theme defined above.
  * ------------------------------------------------------------------------------------------ */
 @layer base {
-.landing {
+.landing,
+.surface-cream,
+.surface-warm {
+    color-scheme: light;
+    --background: #f8f1e7;          /* Soft Cream */
+    --foreground: #0b0b0b;          /* Deep Black */
+    --card: #fdf9f3;                /* warm white, so cards stand out on cream */
+    --card-foreground: #0b0b0b;
+    --popover: #fdf9f3;
+    --popover-foreground: #0b0b0b;
+    --primary: #5b0f18;             /* Burgundy Wine */
+    --primary-foreground: #f8f1e7;
+    --primary-hover: #74202b;       /* muted burgundy */
+    --secondary: #efe5d7;
+    --secondary-foreground: #0b0b0b;
+    --muted: #efe5d7;
+    --muted-foreground: #4a433d;    /* dark charcoal body text: 8.5:1 on cream */
+    --subtle-foreground: #6b625a;   /* muted warm grey: 5.3:1 on cream */
+    --accent: #efe5d7;
+    --accent-foreground: #0b0b0b;
+    --accent-ink: #5b0f18;          /* accent text and icons */
+    --accent-solid: #5b0f18;        /* accent fills: rules, dots, selected marks */
+    --destructive: #8a1c26;
+    --border: rgb(11 11 11 / 0.1);
+    --input: rgb(11 11 11 / 0.16);
+    --ring: #5b0f18;
+    --track: rgb(11 11 11 / 0.08);  /* empty part of a bar */
+    --viz-1: #5b0f18;               /* required skills */
+    --viz-2: #9c4a52;               /* nice-to-have skills */
+    --viz-3: #c9a19a;               /* experience */
+    --viz-4: #8e857c;               /* location */
+    --mark-a: #0b0b0b;              /* logo: candidate circle */
+    --mark-b: #5b0f18;              /* logo: job circle */
+    --mark-fill: #5b0f18;           /* logo: the overlap (the fit) */
+}
+.surface-warm {
+    --background: #f1e7d9;          /* warm off-white */
+    --card: #f8f1e7;
+    --popover: #f8f1e7;
+}
+.surface-ink {
     color-scheme: dark;
-    --background: #0a0a0f;
-    --foreground: #f5f5f7;
-    --card: #14141e;
-    --card-foreground: #f5f5f7;
-    --popover: #14141e;
-    --popover-foreground: #f5f5f7;
-    --primary: #6d4aff;
-    --primary-foreground: #ffffff;
-    --secondary: #1a1a27;
-    --secondary-foreground: #f5f5f7;
-    --muted: #1a1a27;
-    --muted-foreground: #a1a1aa;
-    --accent: #1a1a27;
-    --accent-foreground: #f5f5f7;
-    --destructive: #f87171;
-    --border: rgb(255 255 255 / 0.09);
-    --input: rgb(255 255 255 / 0.12);
-    --ring: #a594ff;
-    /* Landing-only tokens. */
-    --surface: #101018;
-    --elevated: #1a1a27;
-    --subtle-foreground: #92929e; /* lighter than #71717a so small text keeps 4.5:1 on cards and tinted rows */
-    --brand: #7c5cff;
-    --brand-soft: #a594ff;
-    --brand-blue: #5b7cff;
+    --background: #0b0b0b;
+    --foreground: #f8f1e7;
+    --card: #161413;                /* soft charcoal */
+    --card-foreground: #f8f1e7;
+    --popover: #161413;
+    --popover-foreground: #f8f1e7;
+    --primary: #f8f1e7;
+    --primary-foreground: #0b0b0b;
+    --primary-hover: #ffffff;
+    --secondary: #1f1c1a;
+    --secondary-foreground: #f8f1e7;
+    --muted: #1f1c1a;
+    --muted-foreground: #d2c8bc;    /* muted warm white */
+    --subtle-foreground: #a2978b;
+    --accent: #1f1c1a;
+    --accent-foreground: #f8f1e7;
+    --accent-ink: #e6c3bb;          /* a light, burgundy-compatible cream */
+    --accent-solid: #e6c3bb;
+    --destructive: #e8a3a3;
+    --border: rgb(248 241 231 / 0.12);
+    --input: rgb(248 241 231 / 0.18);
+    --ring: #e6c3bb;
+    --track: rgb(248 241 231 / 0.1);
+    --viz-1: #f8f1e7;
+    --viz-2: #d9a8a0;
+    --viz-3: #a46a6f;
+    --viz-4: #6f6760;
+    --mark-a: #f8f1e7;
+    --mark-b: #e6c3bb;
+    --mark-fill: #e6c3bb;
+}
+.surface-wine {
+    color-scheme: dark;
+    --background: #5b0f18;
+    --foreground: #f8f1e7;
+    --card: #4a0b13;
+    --card-foreground: #f8f1e7;
+    --popover: #4a0b13;
+    --popover-foreground: #f8f1e7;
+    --primary: #f8f1e7;
+    --primary-foreground: #5b0f18;
+    --primary-hover: #ffffff;
+    --secondary: #6b1a24;
+    --secondary-foreground: #f8f1e7;
+    --muted: #6b1a24;
+    --muted-foreground: #f0e4d6;    /* warm off-white */
+    --subtle-foreground: #dcc8ba;
+    --accent: #6b1a24;
+    --accent-foreground: #f8f1e7;
+    --accent-ink: #f8f1e7;
+    --accent-solid: #f8f1e7;
+    --destructive: #ffd0c8;
+    --border: rgb(248 241 231 / 0.18);
+    --input: rgb(248 241 231 / 0.24);
+    --ring: #f8f1e7;
+    --track: rgb(248 241 231 / 0.16);
+    --viz-1: #f8f1e7;
+    --viz-2: #e6c3bb;
+    --viz-3: #c28c8a;
+    --viz-4: #9c6a68;
+    --mark-a: #f8f1e7;
+    --mark-b: #e6c3bb;
+    --mark-fill: #f8f1e7;
+}
+.landing,
+.surface-cream,
+.surface-warm,
+.surface-ink,
+.surface-wine {
     background-color: var(--background);
     color: var(--foreground);
+}
+.landing {
     font-feature-settings: "cv11", "ss01";
 }
 }
 
 @theme inline {
-    --color-surface: var(--surface);
-    --color-elevated: var(--elevated);
+    --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
     --color-subtle-foreground: var(--subtle-foreground);
-    --color-brand: var(--brand);
-    --color-brand-soft: var(--brand-soft);
-    --color-brand-blue: var(--brand-blue);
+    --color-accent-ink: var(--accent-ink);
+    --color-accent-solid: var(--accent-solid);
+    --color-primary-hover: var(--primary-hover);
+    --color-track: var(--track);
+    --color-viz-1: var(--viz-1);
+    --color-viz-2: var(--viz-2);
+    --color-viz-3: var(--viz-3);
+    --color-viz-4: var(--viz-4);
+    --color-wine: #5b0f18;
+    --color-cream: #f8f1e7;
+    --color-ink: #0b0b0b;
 
-    --animate-marquee: marquee 40s linear infinite;
-    --animate-drift: drift 24s ease-in-out infinite alternate;
-    --animate-float: float 7s ease-in-out infinite;
+    --animate-marquee: marquee 45s linear infinite;
+    --animate-drift: drift 26s ease-in-out infinite alternate;
+    --animate-float: float 8s ease-in-out infinite;
     --animate-dash-flow: dash-flow 3s linear infinite;
     --animate-pulse-ring: pulse-ring 3.6s ease-out infinite;
 
@@ -189,24 +286,39 @@
     }
     @keyframes drift {
         from { transform: translate3d(0, 0, 0) scale(1); }
-        to { transform: translate3d(4%, 6%, 0) scale(1.1); }
+        to { transform: translate3d(3%, 5%, 0) scale(1.08); }
     }
     @keyframes float {
         0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-8px); }
+        50% { transform: translateY(-6px); }
     }
     @keyframes dash-flow {
         from { stroke-dashoffset: 100; }
         to { stroke-dashoffset: 0; }
     }
     @keyframes pulse-ring {
-        from { transform: scale(0.9); opacity: 0.55; }
-        to { transform: scale(1.7); opacity: 0; }
+        from { transform: scale(0.92); opacity: 0.5; }
+        to { transform: scale(1.5); opacity: 0; }
+    }
+}
+
+/* A faint paper grain for cream surfaces (decorative, behind the content). */
+@utility paper-grain {
+    position: relative;
+    isolation: isolate;
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        opacity: 0.5;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.04 0 0 0 0 0.03 0 0 0 0 0.02 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     }
 }
 
 body:has(.landing) {
-    background-color: #0a0a0f;
+    background-color: #f8f1e7;
 }
 
 @media (prefers-reduced-motion: no-preference) {

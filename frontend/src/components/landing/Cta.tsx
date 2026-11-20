@@ -17,7 +17,10 @@ interface CtaProps {
   className?: string
 }
 
-/** Pill-shaped call to action built on the shadcn Button. */
+/**
+ * Pill-shaped call to action built on the shadcn Button. Its colours come from the surface:
+ * burgundy with cream text on cream, cream with dark text on black or burgundy.
+ */
 export function Cta({ children, to, href, variant = 'primary', size = 'md', arrow = false, className }: CtaProps) {
   const content = (
     <>
@@ -30,11 +33,11 @@ export function Cta({ children, to, href, variant = 'primary', size = 'md', arro
       asChild
       variant={variant === 'primary' ? 'default' : 'outline'}
       className={cn(
-        'group/cta rounded-full font-semibold transition-[background-color,box-shadow,transform] duration-300 ease-out',
-        size === 'md' ? 'h-11 gap-2 px-5 text-sm has-data-[icon=inline-end]:pr-4' : 'h-9 gap-1.5 px-4 text-sm',
+        'group/cta rounded-full font-medium shadow-none transition-[background-color,border-color,color,translate] duration-300 ease-out hover:-translate-y-px',
+        size === 'md' ? 'h-11 gap-2 px-6 text-sm' : 'h-9 gap-1.5 px-4 text-sm',
         variant === 'primary'
-          ? 'shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14),0_10px_32px_-12px_rgb(124_92_255/0.8)] hover:bg-[#7856ff] hover:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.2),0_14px_40px_-12px_rgb(124_92_255/0.95)]'
-          : 'border-white/12 bg-white/[0.03] text-foreground shadow-none hover:bg-white/[0.08] hover:text-foreground',
+          ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
+          : 'border-foreground/25 bg-transparent text-foreground hover:border-foreground/45 hover:bg-foreground/[0.04] hover:text-foreground',
         className,
       )}
     >

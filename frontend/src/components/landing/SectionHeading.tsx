@@ -3,14 +3,11 @@ import type { ReactNode } from 'react'
 import { Reveal } from '@/components/landing/Reveal'
 import { cn } from '@/lib/utils'
 
+/** A small uppercase label with a short accent rule. */
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-soft',
-        className,
-      )}
-    >
+    <span className={cn('inline-flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-accent-ink', className)}>
+      <span aria-hidden="true" className="hidden h-px w-8 bg-accent-solid/60 sm:block" />
       {children}
     </span>
   )
@@ -30,7 +27,7 @@ export function SectionHeading({ eyebrow, title, description, align = 'left', id
   return (
     <Reveal className={cn(align === 'center' && 'mx-auto text-center', 'max-w-3xl', className)}>
       <Eyebrow>{eyebrow}</Eyebrow>
-      <h2 id={id} className="mt-5 text-3xl font-semibold leading-[1.08] tracking-[-0.035em] text-balance sm:text-4xl lg:text-5xl">
+      <h2 id={id} className="mt-5 font-display text-4xl font-normal leading-[1.04] tracking-[-0.01em] text-balance sm:text-5xl lg:text-6xl">
         {title}
       </h2>
       {description && (
@@ -42,7 +39,7 @@ export function SectionHeading({ eyebrow, title, description, align = 'left', id
   )
 }
 
-/** Muted second line of a two-line heading. */
+/** Second line of a two-line heading, in the accent colour and italic. */
 export function HeadingMuted({ children }: { children: ReactNode }) {
-  return <span className="block text-muted-foreground">{children}</span>
+  return <span className="block italic text-accent-ink">{children}</span>
 }

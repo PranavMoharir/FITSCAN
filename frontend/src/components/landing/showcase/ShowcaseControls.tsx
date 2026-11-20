@@ -1,15 +1,15 @@
 import { ToggleGroup } from 'radix-ui'
 import type { ReactNode } from 'react'
 
-import { ACCENTS, type Accent, type Density, type Display } from '@/components/landing/showcase/ShowcaseViews'
+import { THEMES, type Density, type Display, type PreviewTheme } from '@/components/landing/showcase/ShowcaseViews'
 import { cn } from '@/lib/utils'
 
 const itemClass =
-  'h-8 rounded-lg px-3 text-[13px] font-medium text-muted-foreground outline-none transition-colors duration-200 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=on]:bg-white/[0.1] data-[state=on]:text-foreground'
+  'h-8 rounded-full px-3.5 text-[13px] font-medium text-muted-foreground outline-none transition-colors duration-200 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=on]:bg-primary data-[state=on]:text-primary-foreground'
 
 function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-2xl border border-white/[0.08] bg-card/80 p-1.5 pl-3 shadow-[0_20px_50px_-30px_rgb(0_0_0/0.9)] backdrop-blur">
+    <div className="flex items-center gap-1.5 rounded-full border border-border bg-card p-1 pl-4">
       <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-subtle-foreground">{label}</span>
       {children}
     </div>
@@ -17,31 +17,34 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 }
 
 interface ShowcaseControlsProps {
-  accent: Accent
+  theme: PreviewTheme
   density: Density
   display: Display
-  onAccent: (value: Accent) => void
+  onTheme: (value: PreviewTheme) => void
   onDensity: (value: Density) => void
   onDisplay: (value: Display) => void
 }
 
 /** Single-choice toggle groups: arrow keys move between options, as in a radio group. */
-export function ShowcaseControls({ accent, density, display, onAccent, onDensity, onDisplay }: ShowcaseControlsProps) {
+export function ShowcaseControls({ theme, density, display, onTheme, onDensity, onDisplay }: ShowcaseControlsProps) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-3">
       <Group label="Theme">
-        <ToggleGroup.Root type="single" value={accent} onValueChange={(v) => v && onAccent(v as Accent)} aria-label="Preview accent colour" className="flex gap-1">
-          {(Object.keys(ACCENTS) as Accent[]).map((key) => (
+        <ToggleGroup.Root type="single" value={theme} onValueChange={(v) => v && onTheme(v as PreviewTheme)} aria-label="Preview theme" className="flex gap-1">
+          {(Object.keys(THEMES) as PreviewTheme[]).map((key) => (
             <ToggleGroup.Item
               key={key}
               value={key}
-              aria-label={ACCENTS[key].label}
-              title={ACCENTS[key].label}
-              className="grid size-8 place-items-center rounded-lg outline-none transition-colors hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-ring data-[state=on]:bg-white/[0.1]"
+              aria-label={THEMES[key].label}
+              title={THEMES[key].label}
+              className="grid size-8 place-items-center rounded-full outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span
-                className={cn('size-4 rounded-full ring-offset-2 ring-offset-[#14141e] transition-shadow', accent === key && 'ring-2 ring-white/70')}
-                style={{ backgroundColor: ACCENTS[key].solid }}
+                className={cn(
+                  'size-4 rounded-full border border-foreground/25 ring-offset-2 ring-offset-[var(--card)] transition-shadow',
+                  theme === key && 'ring-2 ring-primary',
+                )}
+                style={{ backgroundColor: THEMES[key].swatch }}
               />
             </ToggleGroup.Item>
           ))}

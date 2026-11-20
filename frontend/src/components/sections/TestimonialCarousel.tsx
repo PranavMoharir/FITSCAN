@@ -52,7 +52,7 @@ export function TestimonialCarousel() {
 
   const slide = principles[index]
   return (
-    <section id={SECTION.why} aria-labelledby="why-title" className="scroll-mt-20 border-t border-white/[0.06]">
+    <section id={SECTION.why} aria-labelledby="why-title" className="surface-ink scroll-mt-20">
       <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
         <SectionHeading id="why-title" align="center" eyebrow="Product principles" title="Why FITSCAN?" />
 
@@ -69,8 +69,8 @@ export function TestimonialCarousel() {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false)
           }}
         >
-          <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,rgb(124_92_255/0.16),transparent_60%),#12121a] px-6 py-12 sm:px-14 sm:py-16">
-            <span aria-hidden="true" className="pointer-events-none absolute left-6 top-2 select-none font-serif text-[9rem] leading-none text-brand/15 sm:left-10">
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-card px-6 py-12 sm:px-14 sm:py-16">
+            <span aria-hidden="true" className="pointer-events-none absolute left-6 top-2 select-none font-display text-[9rem] leading-none text-accent-solid/25 sm:left-10">
               “
             </span>
             <div aria-live={autoAdvance ? 'off' : 'polite'} className="relative min-h-[15rem] sm:min-h-[13rem]">
@@ -91,8 +91,8 @@ export function TestimonialCarousel() {
                   onDragEnd={onDragEnd}
                   className="cursor-grab touch-pan-y text-center active:cursor-grabbing"
                 >
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-soft">{slide.label}</p>
-                  <blockquote className="mx-auto mt-5 max-w-2xl text-2xl font-medium leading-snug tracking-[-0.02em] text-balance sm:text-4xl">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent-ink">{slide.label}</p>
+                  <blockquote className="mx-auto mt-5 max-w-2xl font-display text-3xl font-normal leading-[1.15] text-balance sm:text-5xl">
                     “{slide.statement}”
                   </blockquote>
                   <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">{slide.text}</p>
@@ -106,7 +106,7 @@ export function TestimonialCarousel() {
               type="button"
               onClick={() => setPlaying((p) => !p)}
               aria-label={playing ? 'Pause automatic slide changes' : 'Resume automatic slide changes'}
-              className="grid size-10 place-items-center rounded-full border border-white/10 text-muted-foreground outline-none transition-colors hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="grid size-10 place-items-center rounded-full border border-foreground/10 text-muted-foreground outline-none transition-colors hover:bg-foreground/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
               {playing ? <Pause className="size-4" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
             </button>
@@ -120,15 +120,15 @@ export function TestimonialCarousel() {
                   aria-current={i === index || undefined}
                   className="grid h-8 min-w-6 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className={cn('block h-1.5 rounded-full transition-all duration-300', i === index ? 'w-6 bg-brand' : 'w-1.5 bg-white/25')} />
+                  <span className={cn('block h-1.5 rounded-full transition-all duration-300', i === index ? 'w-6 bg-accent-solid' : 'w-1.5 bg-foreground/25')} />
                 </button>
               ))}
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => go(-1)} aria-label="Previous slide" className="grid size-10 place-items-center rounded-full border border-white/10 outline-none transition-colors hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-ring">
+              <button type="button" onClick={() => go(-1)} aria-label="Previous slide" className="grid size-10 place-items-center rounded-full border border-foreground/10 outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:ring-2 focus-visible:ring-ring">
                 <ChevronLeft className="size-4" aria-hidden="true" />
               </button>
-              <button type="button" onClick={() => go(1)} aria-label="Next slide" className="grid size-10 place-items-center rounded-full border border-white/10 outline-none transition-colors hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-ring">
+              <button type="button" onClick={() => go(1)} aria-label="Next slide" className="grid size-10 place-items-center rounded-full border border-foreground/10 outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:ring-2 focus-visible:ring-ring">
                 <ChevronRight className="size-4" aria-hidden="true" />
               </button>
             </div>

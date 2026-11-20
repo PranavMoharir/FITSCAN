@@ -46,10 +46,10 @@ export function FlipCard({ feature, index }: { feature: Feature; index: number }
         {/* Front */}
         <article
           inert={flipped}
-          className="group absolute inset-0 flex flex-col rounded-2xl border border-white/[0.08] bg-card p-6 backface-hidden transition-[border-color,box-shadow] duration-300 hover:border-white/[0.14] hover:shadow-[0_20px_60px_-30px_rgb(124_92_255/0.6)]"
+          className="group absolute inset-0 flex flex-col rounded-xl border border-border bg-card p-6 backface-hidden transition-[border-color,box-shadow] duration-300 hover:border-foreground/[0.14] hover:shadow-[0_18px_40px_-26px_rgb(11_11_11/0.35)]"
         >
           <div className="flex items-start justify-between">
-            <span className="grid size-11 place-items-center rounded-xl border border-brand/25 bg-gradient-to-b from-brand/20 to-brand/5 text-brand-soft">
+            <span className="grid size-11 place-items-center rounded-xl border border-accent-solid/15 bg-accent-solid/[0.07] text-accent-ink">
               <Icon className="size-5" aria-hidden="true" />
             </span>
             <span className="text-xs font-medium tabular-nums text-subtle-foreground">0{index + 1}</span>
@@ -67,7 +67,7 @@ export function FlipCard({ feature, index }: { feature: Feature; index: number }
               aria-expanded={flipped}
               aria-controls={backId}
               aria-label={`Show details: ${feature.title}`}
-              className="grid size-9 shrink-0 place-items-center rounded-full border border-white/12 text-foreground outline-none transition-[background-color,transform] duration-300 hover:rotate-90 hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-ring"
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-foreground/12 text-foreground outline-none transition-[background-color,transform] duration-300 hover:rotate-90 hover:bg-foreground/[0.08] focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="size-4" aria-hidden="true" />
             </button>
@@ -78,13 +78,13 @@ export function FlipCard({ feature, index }: { feature: Feature; index: number }
         <article
           id={backId}
           inert={!flipped}
-          className="absolute inset-0 flex rotate-y-180 flex-col rounded-2xl border border-brand/30 bg-[linear-gradient(180deg,rgb(124_92_255/0.16),#14141e_70%)] p-6 backface-hidden"
+          className="absolute inset-0 flex rotate-y-180 flex-col rounded-xl surface-wine border border-accent-solid/20 p-6 backface-hidden"
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-soft">{feature.title}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent-ink">{feature.title}</p>
           <ul className="mt-4 space-y-2.5">
             {feature.details.map((detail) => (
               <li key={detail} className="flex gap-2.5 text-sm leading-snug text-muted-foreground">
-                <Check className="mt-0.5 size-4 shrink-0 text-brand-soft" aria-hidden="true" />
+                <Check className="mt-0.5 size-4 shrink-0 text-accent-ink" aria-hidden="true" />
                 <span>{detail}</span>
               </li>
             ))}
@@ -94,7 +94,7 @@ export function FlipCard({ feature, index }: { feature: Feature; index: number }
             type="button"
             onClick={toggle}
             aria-label={`Hide details: ${feature.title}`}
-            className="mt-auto ml-auto grid size-9 place-items-center rounded-full bg-white/10 text-foreground outline-none transition-colors duration-300 hover:bg-white/[0.16] focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-auto ml-auto grid size-9 place-items-center rounded-full bg-foreground/10 text-foreground outline-none transition-colors duration-300 hover:bg-foreground/[0.16] focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="size-4" aria-hidden="true" />
           </button>

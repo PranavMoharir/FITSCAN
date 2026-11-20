@@ -17,15 +17,15 @@ function JobsVisual() {
   ]
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-xl border border-foreground/10 bg-background px-3 py-2 text-xs text-muted-foreground">
         <Search className="size-3.5" /> python developer
       </div>
       {rows.map(([title, place, width]) => (
-        <div key={title} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2">
-          <span className="size-6 rounded-md bg-brand/25" />
+        <div key={title} className="flex items-center gap-3 rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-3 py-2">
+          <span className="size-6 rounded-md bg-accent-solid/15" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-medium text-foreground">{title}</span>
-            <span className={cn('mt-1 block h-1 rounded-full bg-white/10', width)} />
+            <span className={cn('mt-1 block h-1 rounded-full bg-foreground/10', width)} />
           </span>
           <span className="text-[11px] text-subtle-foreground">{place}</span>
         </div>
@@ -37,17 +37,17 @@ function JobsVisual() {
 function ResumeVisual() {
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-      <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-3">
-        <span className="block h-2 w-1/2 rounded bg-white/25" />
+      <div className="relative overflow-hidden rounded-xl border border-foreground/10 bg-foreground/[0.04] p-3">
+        <span className="block h-2 w-1/2 rounded bg-foreground/25" />
         {['w-full', 'w-5/6', 'w-4/6', 'w-full', 'w-3/6', 'w-5/6'].map((w, i) => (
-          <span key={i} className={cn('mt-2 block h-1 rounded bg-white/10', w)} />
+          <span key={i} className={cn('mt-2 block h-1 rounded bg-foreground/10', w)} />
         ))}
-        <span className="absolute inset-x-0 top-1/2 h-px bg-brand-blue shadow-[0_0_12px_2px_rgb(91_124_255/0.7)]" />
+        <span className="absolute inset-x-0 top-1/2 h-px bg-accent-solid" />
       </div>
       <ArrowUpRight className="size-4 rotate-45 text-subtle-foreground" />
       <div className="flex flex-wrap gap-1.5">
         {['Python', 'SQL', 'Docker', 'React', 'AWS'].map((s) => (
-          <span key={s} className="rounded-full border border-brand-blue/30 bg-brand-blue/15 px-2 py-0.5 text-[11px] text-foreground/90">
+          <span key={s} className="rounded-full border border-accent-solid/25 bg-accent-solid/10 px-2 py-0.5 text-[11px] text-accent-ink">
             {s}
           </span>
         ))}
@@ -61,8 +61,8 @@ function CompareVisual() {
   return (
     <div className="flex items-center gap-5">
       <svg viewBox="0 0 72 72" className="size-24 shrink-0 -rotate-90">
-        <circle cx="36" cy="36" r="30" stroke="rgb(255 255 255 / 0.08)" strokeWidth="6" fill="none" />
-        <circle cx="36" cy="36" r="30" stroke="var(--brand-soft)" strokeWidth="6" fill="none" strokeLinecap="round" strokeDasharray={`${circumference * 0.92} ${circumference}`} />
+        <circle cx="36" cy="36" r="30" stroke="rgb(11 11 11 / 0.08)" strokeWidth="6" fill="none" />
+        <circle cx="36" cy="36" r="30" stroke="#5b0f18" strokeWidth="6" fill="none" strokeLinecap="round" strokeDasharray={`${circumference * 0.92} ${circumference}`} />
         <text x="36" y="41" textAnchor="middle" className="fill-foreground text-[15px] font-semibold" transform="rotate(90 36 36)">
           92
         </text>
@@ -76,8 +76,8 @@ function CompareVisual() {
         ].map(([label, width]) => (
           <div key={label}>
             <span className="text-[11px] text-subtle-foreground">{label}</span>
-            <span className="mt-1 block h-1 rounded-full bg-white/10">
-              <span className={cn('block h-full rounded-full bg-brand-soft/80', width)} />
+            <span className="mt-1 block h-1 rounded-full bg-foreground/10">
+              <span className={cn('block h-full rounded-full bg-accent-ink/80', width)} />
             </span>
           </div>
         ))}
@@ -97,8 +97,8 @@ function RankingVisual() {
           <li key={match.candidate.id} className="flex items-center gap-3 text-xs">
             <span className="w-4 tabular-nums text-subtle-foreground">{i + 1}</span>
             <span className="w-20 truncate text-foreground">{match.candidate.name}</span>
-            <span className="h-1.5 flex-1 rounded-full bg-white/10">
-              <span className="block h-full rounded-full bg-gradient-to-r from-brand to-brand-blue" style={{ width: `${match.score}%` }} />
+            <span className="h-1.5 flex-1 rounded-full bg-foreground/10">
+              <span className="block h-full rounded-full bg-accent-solid" style={{ width: `${match.score}%` }} />
             </span>
             <span className="w-12 text-right tabular-nums text-muted-foreground">{formatScore(match.score)}</span>
           </li>
@@ -121,28 +121,28 @@ const tiles: Tile[] = [
     title: 'Discover Opportunities',
     text: 'Every crawled listing becomes a clean, searchable job with its skills extracted.',
     href: hash(SECTION.product),
-    gradient: 'bg-[radial-gradient(120%_100%_at_0%_0%,rgb(124_92_255/0.30),transparent_60%),linear-gradient(180deg,#15151f,#101018)]',
+    gradient: 'bg-[radial-gradient(120%_100%_at_0%_0%,rgb(91_15_24/0.10),transparent_60%)]',
     visual: <JobsVisual />,
   },
   {
     title: 'Understand Candidates',
     text: 'Resumes turn into profiles with normalised skills, experience and location.',
     href: hash(SECTION.product),
-    gradient: 'bg-[radial-gradient(120%_100%_at_100%_0%,rgb(91_124_255/0.28),transparent_60%),linear-gradient(180deg,#15151f,#101018)]',
+    gradient: 'bg-[radial-gradient(120%_100%_at_100%_0%,rgb(91_15_24/0.07),transparent_60%)]',
     visual: <ResumeVisual />,
   },
   {
     title: 'Compare with Confidence',
     text: 'Four weighted dimensions show where a candidate fits and where the gaps are.',
     href: hash(SECTION.matching),
-    gradient: 'bg-[radial-gradient(120%_100%_at_0%_100%,rgb(165_148_255/0.22),transparent_60%),linear-gradient(180deg,#15151f,#101018)]',
+    gradient: 'bg-[radial-gradient(120%_100%_at_0%_100%,rgb(91_15_24/0.08),transparent_60%)]',
     visual: <CompareVisual />,
   },
   {
     title: 'Make Better Decisions',
     text: 'Ranked top-10 lists in both directions, ready to review or export.',
     href: hash(SECTION.showcase),
-    gradient: 'bg-[radial-gradient(120%_100%_at_100%_100%,rgb(109_74_255/0.28),transparent_60%),linear-gradient(180deg,#15151f,#101018)]',
+    gradient: 'bg-[radial-gradient(120%_100%_at_100%_100%,rgb(91_15_24/0.12),transparent_60%)]',
     visual: <RankingVisual />,
   },
 ]
@@ -162,11 +162,11 @@ export function GradientFeatureTiles() {
             <a
               href={tile.href}
               className={cn(
-                'group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.08] p-6 outline-none transition-[transform,border-color,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:border-white/[0.16] hover:shadow-[0_30px_80px_-30px_rgb(124_92_255/0.55)] focus-visible:ring-2 focus-visible:ring-ring sm:p-8',
+                'group relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card p-6 outline-none transition-[transform,border-color,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:border-foreground/[0.16] hover:shadow-[0_24px_50px_-28px_rgb(91_15_24/0.35)] focus-visible:ring-2 focus-visible:ring-ring sm:p-8',
                 tile.gradient,
               )}
             >
-              <div aria-hidden="true" className="rounded-2xl border border-white/[0.06] bg-black/20 p-4 backdrop-blur-sm sm:p-5">
+              <div aria-hidden="true" className="rounded-xl border border-foreground/[0.06] bg-background/70 p-4 sm:p-5">
                 {tile.visual}
               </div>
               <div className="mt-7 flex items-end justify-between gap-6">
@@ -174,7 +174,7 @@ export function GradientFeatureTiles() {
                   <h3 className="text-2xl font-semibold tracking-[-0.02em]">{tile.title}</h3>
                   <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">{tile.text}</p>
                 </div>
-                <span className="grid size-10 shrink-0 place-items-center rounded-full border border-white/12 transition-[background-color,transform] duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:bg-white/[0.1]">
+                <span className="grid size-10 shrink-0 place-items-center rounded-full border border-foreground/12 transition-[background-color,transform] duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:bg-foreground/[0.1]">
                   <ArrowUpRight className="size-4" aria-hidden="true" />
                 </span>
               </div>

@@ -24,12 +24,11 @@ function MatchBreakdown() {
   const { candidate, job } = match
   return (
     <div className="relative">
-      <div aria-hidden="true" className="absolute -inset-10 rounded-[3rem] bg-[radial-gradient(closest-side,rgb(124_92_255/0.22),transparent)] blur-2xl" />
-      <figure className="relative rounded-2xl border border-white/[0.09] bg-card p-6 shadow-[0_40px_120px_-40px_rgb(0_0_0/0.9)] sm:p-8">
+      <figure className="relative rounded-xl border border-border bg-card p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-medium text-subtle-foreground">Overall match</p>
-            <p ref={ref} aria-hidden="true" className="mt-1 text-6xl font-semibold tracking-[-0.04em] tabular-nums">
+            <p ref={ref} aria-hidden="true" className="mt-1 font-display text-7xl font-normal leading-none tabular-nums">
               {whole}
               <span className="text-3xl text-subtle-foreground">.{decimals}</span>
             </p>
@@ -42,10 +41,10 @@ function MatchBreakdown() {
         </div>
 
         <div className="mt-8 space-y-5">
-          <ComponentBar label="Required skills" detail={`${match.required.matched.length} of ${job.required.length} · ${formatPercent(match.required.fit)}`} fit={match.required.fit} color="var(--brand)" />
-          <ComponentBar label="Nice-to-have skills" detail={`${match.nice.matched.length} of ${job.niceToHave.length} · ${formatPercent(match.nice.fit)}`} fit={match.nice.fit} color="var(--brand-soft)" delay={0.08} />
-          <ComponentBar label="Experience" detail={`${candidate.years} of ${job.minYears} yrs · ${formatPercent(match.experience.fit)}`} fit={match.experience.fit} color="var(--brand-blue)" delay={0.16} />
-          <ComponentBar label="Location" detail={`Same city · ${formatPercent(match.location.fit)}`} fit={match.location.fit} color="rgb(255 255 255 / 0.6)" delay={0.24} />
+          <ComponentBar label="Required skills" detail={`${match.required.matched.length} of ${job.required.length} · ${formatPercent(match.required.fit)}`} fit={match.required.fit} color="var(--viz-1)" />
+          <ComponentBar label="Nice-to-have skills" detail={`${match.nice.matched.length} of ${job.niceToHave.length} · ${formatPercent(match.nice.fit)}`} fit={match.nice.fit} color="var(--viz-2)" delay={0.08} />
+          <ComponentBar label="Experience" detail={`${candidate.years} of ${job.minYears} yrs · ${formatPercent(match.experience.fit)}`} fit={match.experience.fit} color="var(--viz-3)" delay={0.16} />
+          <ComponentBar label="Location" detail={`Same city · ${formatPercent(match.location.fit)}`} fit={match.location.fit} color="var(--viz-4)" delay={0.24} />
         </div>
 
         <div className="mt-7">
@@ -64,7 +63,7 @@ function MatchBreakdown() {
           </ul>
         </div>
 
-        <div className="mt-6 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+        <div className="mt-6 rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] p-4">
           <p className="text-xs font-medium text-subtle-foreground">Why this score</p>
           <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{match.explanation}</p>
           <p className="mt-3 font-mono text-[12px] text-subtle-foreground tabular-nums">
@@ -80,7 +79,7 @@ function MatchBreakdown() {
 
 export function MatchingSection() {
   return (
-    <section id={SECTION.matching} aria-labelledby="matching-title" className="scroll-mt-20 relative overflow-hidden border-t border-white/[0.06]">
+    <section id={SECTION.matching} aria-labelledby="matching-title" className="surface-ink scroll-mt-20 relative overflow-hidden">
       <div className="mx-auto grid max-w-7xl items-center gap-14 px-4 py-20 sm:px-6 sm:py-28 lg:grid-cols-2 lg:gap-20 lg:px-8">
         <div>
           <SectionHeading
@@ -100,15 +99,15 @@ export function MatchingSection() {
                 key={dimension.title}
                 as="li"
                 delay={i * 0.06}
-                className="flex items-start gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-colors duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
+                className="flex items-start gap-4 rounded-xl border border-foreground/[0.07] bg-foreground/[0.02] p-4 transition-colors duration-300 hover:border-foreground/[0.12] hover:bg-foreground/[0.04]"
               >
-                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand/12 text-brand-soft">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-solid/12 text-accent-ink">
                     <dimension.icon className="size-[18px]" aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-3">
                       <span className="font-medium">{dimension.title}</span>
-                      <span className="shrink-0 text-xs font-medium tabular-nums text-brand-soft">up to {dimension.weight} pts</span>
+                      <span className="shrink-0 text-xs font-medium tabular-nums text-accent-ink">up to {dimension.weight} pts</span>
                     </span>
                     <span className="mt-1 block text-sm leading-relaxed text-muted-foreground">{dimension.text}</span>
                   </span>
@@ -118,7 +117,7 @@ export function MatchingSection() {
           <Reveal delay={0.24}>
             <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
               <span className="font-mono text-[13px] text-foreground">Score = 70R + 15N + 10E + 5L</span>, where each part is a fraction from 0 to 1.
-              When two scores are exactly equal, text similarity decides their order; it never changes a score.
+              Text similarity is used only to break exact-score ties; it never changes a score.
             </p>
           </Reveal>
         </div>

@@ -58,7 +58,8 @@ const features: Feature[] = [
 
 export function FeaturesSection() {
   return (
-    <section id={SECTION.product} aria-labelledby="features-title" className="scroll-mt-20 mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
+    <section id={SECTION.product} aria-labelledby="features-title" className="surface-warm scroll-mt-20">
+      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <SectionHeading
           id="features-title"
@@ -74,6 +75,7 @@ export function FeaturesSection() {
             <FlipCard feature={feature} index={i} />
           </Reveal>
         ))}
+      </div>
       </div>
     </section>
   )

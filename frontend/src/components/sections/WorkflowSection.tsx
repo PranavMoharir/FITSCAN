@@ -14,7 +14,7 @@ const steps = [
 
 export function WorkflowSection() {
   return (
-    <section id={SECTION.howItWorks} aria-labelledby="workflow-title" className="scroll-mt-20 border-t border-white/[0.06] bg-surface/50">
+    <section id={SECTION.howItWorks} aria-labelledby="workflow-title" className="surface-wine scroll-mt-20">
       <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
         <SectionHeading
           id="workflow-title"
@@ -27,7 +27,7 @@ export function WorkflowSection() {
           {/* Connecting line: horizontal on desktop, vertical on smaller screens. */}
           <motion.span
             aria-hidden="true"
-            className="absolute left-[2.25rem] right-[calc(25%-2.25rem)] top-5 hidden h-px origin-left bg-gradient-to-r from-brand via-brand-soft to-brand-blue lg:block"
+            className="absolute left-[2.25rem] right-[calc(25%-2.25rem)] top-5 hidden h-px origin-left bg-foreground/40 lg:block"
             initial={{ scaleX: 0 }}
             whileInView={{ scaleX: 1 }}
             viewport={{ once: true, amount: 0.6 }}
@@ -35,7 +35,7 @@ export function WorkflowSection() {
           />
           <motion.span
             aria-hidden="true"
-            className="absolute bottom-10 left-5 top-5 w-px origin-top bg-gradient-to-b from-brand via-brand-soft to-brand-blue lg:hidden"
+            className="absolute bottom-10 left-5 top-5 w-px origin-top bg-foreground/40 lg:hidden"
             initial={{ scaleY: 0 }}
             whileInView={{ scaleY: 1 }}
             viewport={{ once: true, amount: 0.3 }}
@@ -43,7 +43,7 @@ export function WorkflowSection() {
           />
           {steps.map((step, i) => (
             <Reveal key={step.title} as="li" delay={0.1 + i * 0.12} className="relative pl-16 lg:pl-0">
-              <span className="absolute left-0 top-0 grid size-10 place-items-center rounded-full border border-brand/40 bg-[#0e0e16] text-sm font-semibold tabular-nums text-brand-soft shadow-[0_0_24px_-6px_rgb(124_92_255/0.7)] lg:relative">
+              <span className="absolute left-0 top-0 grid size-10 place-items-center rounded-full border border-foreground/45 bg-background font-display text-lg tabular-nums text-foreground lg:relative">
                 0{i + 1}
               </span>
               <div className="lg:mt-7 lg:pr-4">
@@ -52,7 +52,7 @@ export function WorkflowSection() {
                 <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
                   {step.points.map((point) => (
                     <li key={point} className="flex gap-2">
-                      <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-brand-soft/70" />
+                      <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-accent-ink/70" />
                       {point}
                     </li>
                   ))}
