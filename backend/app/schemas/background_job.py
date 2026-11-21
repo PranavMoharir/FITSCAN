@@ -3,11 +3,11 @@
 import re
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
-from app.config import get_settings
+from app.config import check_weight_values, get_settings
 from app.models import BackgroundJob
 
 MAX_DEPTH_LIMIT = 10
@@ -50,6 +50,34 @@ class CrawlRequest(BaseModel):
                 raise ValueError(f"{domain!r} is not a host name (write 'example.com', without http:// or a path)")
             cleaned.append(host)
         return sorted(set(cleaned))
+
+
+# A weight sent by a client: a whole number from 0 to 100. Strict, so 70.5, 70.0, "70" and true are refused.
+Weight = Annotated[int, Field(strict=True, ge=0, le=100)]
+
+
+class MatchWeightsBody(BaseModel):
+    """The four weights of a match run (LLD §7.4): whole numbers that add up to exactly 100, never rescaled."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    required: Weight
+    nice: Weight
+    experience: Weight
+    location: Weight
+
+    @model_validator(mode="after")
+    def _add_up_to_100(self) -> "MatchWeightsBody":
+        check_weight_values((self.required, self.nice, self.experience, self.location))
+        return self
+
+
+class MatchRequest(BaseModel):
+    """POST /background-jobs/match. Without weights, the run uses the active weights (GET /matching/weights)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    weights: MatchWeightsBody | None = None
 
 
 class Progress(BaseModel):

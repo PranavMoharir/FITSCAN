@@ -46,6 +46,12 @@ export function Field({ label, hint, error, optional, className, children }: Fie
   )
 }
 
+/** An API validation message as a sentence: "must be at most 500" -> "Must be at most 500." (no Pydantic prefix). */
+export function errorSentence(message: string): string {
+  const text = message.replace(/^Value error, /, '').trim()
+  return text ? text[0].toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? '' : '.') : 'This value is not valid.'
+}
+
 /** A message for the whole form (for example the server could not queue the job). */
 export function FormAlert({ children }: { children: React.ReactNode }) {
   return (

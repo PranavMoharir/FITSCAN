@@ -168,7 +168,7 @@ All records have status **Proposed**. They become **Accepted** once implementati
 
 - **Context.** The brief offers the formula `70·required + 15·nice + 10·experience + 5·location` and allows changes if the score stays explainable.
 - **Decision.** Use the formula exactly, with weights held in configuration.
-- **Consequences.** Every point is traceable. Adjustable weights (Could) only need a UI and a recompute.
+- **Consequences.** Every point is traceable. Adjustable weights (Could) are implemented this way (22 November 2026): the formula is unchanged; each match run takes optional whole-number weights that add up to exactly 100 (refused otherwise, never rescaled) and records them in its `params`; `MATCH_WEIGHTS` stays the default.
 
 ## ADR-017 — Scoring edge-case rules
 
@@ -202,13 +202,15 @@ All records have status **Proposed**. They become **Accepted** once implementati
 
 ## ADR-019 — Precomputed all-pairs matches via a `match` job
 
-- **Context.** The brief requires scoring every candidate against every job and showing the top 10 in both directions. Automatic re-matching when new jobs arrive is a Could feature.
+- **Context.** The brief requires scoring every candidate against every job and showing the top 10 in both directions. Automatic re-matching when new jobs arrive is a Could feature (implemented later; see the consequences).
 - **Decision.** A `match` background job computes all pairs, one pair at a time with the exact scoring function (ADR-017), and replaces the `matches` table in one transaction. It is triggered manually from the UI or API. Reads use indexes on `(candidate_id, score)` and `(job_id, score)` and order by the full-precision score, then the tie-breakers (ADR-018).
 - **Alternatives considered.**
   - Computing on every request: always fresh, but repeats work and is harder to export.
   - Vectorized sparse-matrix scoring, and storing only each candidate's and each job's top 10. On synthetic data these were about 15× faster and stored 90–99.5% fewer rows, with identical top-10 lists. They are more complex to explain and not needed at assignment scale, so they are recorded as the scale path instead (detailed HLD Section 10.10).
 - **Consequences.**
   - Match pages are fast, and exports read stored rows. Results can be stale until recomputed, so the UI shows "last computed".
+  - Two runs may be in progress at once. A run saves its results and becomes `completed` in one transaction under the table lock, and only if no run that started later has already saved; otherwise it ends `cancelled` as superseded (LLD §7.9). An older run never overwrites a newer run's results.
+  - Automatic re-matching (Could, implemented 22 November 2026): a crawl that ends `completed`, or `failed` after saving jobs, and saved new jobs or changed what matching reads, queues a full `match` run with the active weights. Never after a cancelled crawl, and not when `AUTO_REMATCH` is `false`, there are no candidates or a run is already queued. Manual and automatic requests take the same advisory lock, so they never race into duplicate runs; the rule above keeps an automatic run from overwriting newer results.
   - If volumes grow, the scale path is applied in this order:
     1. vectorized scoring, with its rankings first checked against the exact version;
     2. top-10-only storage;

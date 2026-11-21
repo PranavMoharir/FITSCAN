@@ -13,7 +13,7 @@ from datetime import timedelta
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, aliased
 
-from app.config import get_settings
+from app.config import check_weight_values, get_settings
 from app.crawler.ssrf import BlockedHostError, UnresolvableHostError, check_host
 from app.crawler.urls import host_of, is_allowed_host, normalize_url
 from app.errors import AppError
@@ -153,14 +153,125 @@ def create_resume_job(session: Session, files: list[IncomingFile]) -> tuple[Back
     return job, accepted, rejected
 
 
-def create_match_job(session: Session) -> BackgroundJob:
-    """Queue a run that scores every candidate against every job (LLD §7.1). It has no parameters.
+# --- Match weights (LLD §7.4) --------------------------------------------------------------------------
+#
+# Every match run records the weights it uses in params["weights"]. Runs from before weights were
+# recorded have params = None: their weights are "not recorded" (their stored points and
+# explanations still say exactly what each match received).
+
+WEIGHT_KEYS = ("required", "nice", "experience", "location")
+MATCH_QUEUE_LOCK = 7202611  # pg_advisory_xact_lock key: one transaction at a time creates a match run
+
+
+def _number(value: float) -> int | float:
+    return int(value) if float(value).is_integer() else value
+
+
+def default_weights() -> dict:
+    """MATCH_WEIGHTS (70, 15, 10, 5 unless configured otherwise), as JSON numbers."""
+    weights = get_settings().match_weights
+    return {key: _number(getattr(weights, key)) for key in WEIGHT_KEYS}
+
+
+def recorded_weights(params: object) -> dict | None:
+    """A run's recorded weights, or None if it has none (an older run) or they are not valid."""
+    weights = params.get("weights") if isinstance(params, dict) else None
+    if not isinstance(weights, dict) or set(weights) != set(WEIGHT_KEYS):
+        return None
+    values = [weights[key] for key in WEIGHT_KEYS]
+    if any(isinstance(value, bool) or not isinstance(value, int | float) for value in values):
+        return None
+    try:
+        check_weight_values(values)
+    except ValueError:
+        return None
+    return {key: weights[key] for key in WEIGHT_KEYS}
+
+
+def active_weights(session: Session) -> tuple[dict, uuid.UUID | None]:
+    """The weights a match run uses when none are given, and the run they come from (None: MATCH_WEIGHTS).
+
+    They are the weights of the most recently created match run that is queued, running or
+    completed and has recorded weights. A run that is queued or running counts, so the latest
+    choice is kept while it runs. Failed and cancelled runs (superseded ones included) never
+    change them. With no such run, they are MATCH_WEIGHTS.
+    """
+    rows = session.execute(
+        select(BackgroundJob.background_job_id, BackgroundJob.params)
+        .where(BackgroundJob.type == "match", BackgroundJob.status.in_(("queued", "running", "completed")),
+               BackgroundJob.params.has_key("weights"))
+        .order_by(BackgroundJob.created_at.desc(), BackgroundJob.background_job_id.desc())
+        .limit(20)  # only a hand-edited row could hold invalid weights; those are skipped
+    ).all()
+    for job_id, params in rows:
+        weights = recorded_weights(params)
+        if weights is not None:
+            return weights, job_id
+    return default_weights(), None
+
+
+def results_weights(session: Session) -> dict | None:
+    """The run whose results are stored (the completed match run that started last, LLD §7.9) and its
+    weights (None: not recorded). None if no match run has completed yet."""
+    row = session.execute(
+        select(BackgroundJob.background_job_id, BackgroundJob.params)
+        .where(BackgroundJob.type == "match", BackgroundJob.status == "completed")
+        .order_by(BackgroundJob.started_at.desc(), BackgroundJob.background_job_id.desc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return None
+    return {"background_job_id": row.background_job_id, "weights": recorded_weights(row.params)}
+
+
+def create_match_job(session: Session, weights: dict | None = None) -> BackgroundJob:
+    """Queue a run that scores every candidate against every job (LLD §7.1) with `weights` (already
+    validated), or with the active weights when none are given. The resolved weights are stored in
+    the job's params, so every new run records what it used.
 
     progress_total starts as today's number of candidates; the worker sets it again when it
     loads them. With no candidates or no jobs the job is still created and fails with that reason.
     """
+    session.execute(select(func.pg_advisory_xact_lock(MATCH_QUEUE_LOCK)))  # released when _enqueue commits
+    if weights is None:
+        weights, _ = active_weights(session)
     candidates = session.execute(select(func.count()).select_from(Candidate)).scalar_one()
-    return _enqueue(session, BackgroundJob(type="match", status="queued", params=None, progress_total=candidates))
+    return _enqueue(session, BackgroundJob(type="match", status="queued", params={"weights": weights},
+                                           progress_total=candidates))
+
+
+def request_auto_match(session: Session, crawl_job_id: uuid.UUID) -> tuple[str, uuid.UUID | None]:
+    """Queue a match run after a crawl that saved new or changed jobs (LLD §7.1). `session` must be fresh.
+
+    Under the same lock as create_match_job, so manual and automatic requests are decided one at
+    a time. Returns (outcome, match run ID):
+      "already_requested": a match run was already queued for this crawl;
+      "already_queued": a match run is queued; it loads all jobs when it starts, these included;
+      "no_candidates": nothing to match yet;
+      "queued": a new run with the active weights, and params.after_crawl = the crawl.
+    A run that is already *running* does not count: it may have loaded the jobs before this crawl
+    saved them. Raises AppError (503) if the broker is down; the new run is then marked failed.
+    """
+    session.execute(select(func.pg_advisory_xact_lock(MATCH_QUEUE_LOCK)))  # the first statement of the transaction
+    match_runs = select(BackgroundJob.background_job_id).where(BackgroundJob.type == "match")
+    earlier = session.execute(match_runs.where(BackgroundJob.params["after_crawl"].astext == str(crawl_job_id))
+                              .limit(1)).scalar_one_or_none()
+    if earlier is not None:
+        session.rollback()  # ends the transaction: releases the lock
+        return "already_requested", earlier
+    queued = session.execute(match_runs.where(BackgroundJob.status == "queued")
+                             .order_by(BackgroundJob.created_at.desc()).limit(1)).scalar_one_or_none()
+    if queued is not None:
+        session.rollback()
+        return "already_queued", queued
+    candidates = session.execute(select(func.count()).select_from(Candidate)).scalar_one()
+    if candidates == 0:
+        session.rollback()
+        return "no_candidates", None
+    weights, _ = active_weights(session)
+    job = _enqueue(session, BackgroundJob(type="match", status="queued", progress_total=candidates,
+                                          params={"weights": weights, "after_crawl": str(crawl_job_id)}))
+    return "queued", job.background_job_id
 
 
 # --- Read --------------------------------------------------------------------------------------------

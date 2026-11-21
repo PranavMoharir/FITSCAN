@@ -7,7 +7,7 @@ Routers stay thin: validate the input, call the service, return a schema.
 import uuid
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.schemas.background_job import (
     LogLevel,
     LogLine,
     LogList,
+    MatchRequest,
     RejectedFileInfo,
     ResumeJobCreated,
 )
@@ -70,13 +71,18 @@ def create_resume(
 
 @router.post(
     "/match", status_code=202, response_model=BackgroundJobCreated,
-    responses={503: {"model": ErrorResponse, "description": "Broker unavailable"}},
+    responses={422: {"model": ErrorResponse, "description": "Invalid weights"},
+               503: {"model": ErrorResponse, "description": "Broker unavailable"}},
     summary="Recompute all matches",
     description="Scores every candidate against every job and replaces all stored matches when it finishes. "
-                "Until then, and if it is cancelled or fails, the previous matches stay unchanged.",
+                "Until then, and if it is cancelled or fails, the previous matches stay unchanged. "
+                "The body is optional: `weights` are four whole numbers from 0 to 100 that add up to exactly 100 "
+                "(never rescaled). Without weights, the run uses the active weights (GET /matching/weights). "
+                "The run's params record the weights it uses.",
 )
-def create_match(db: Session = Depends(get_db)) -> BackgroundJobCreated:
-    return BackgroundJobCreated.of(service.create_match_job(db))
+def create_match(request: MatchRequest | None = Body(default=None), db: Session = Depends(get_db)) -> BackgroundJobCreated:
+    weights = request.weights.model_dump() if request is not None and request.weights is not None else None
+    return BackgroundJobCreated.of(service.create_match_job(db, weights))
 
 
 @router.get("", response_model=BackgroundJobList, responses={422: {"model": ErrorResponse}}, summary="List background jobs")

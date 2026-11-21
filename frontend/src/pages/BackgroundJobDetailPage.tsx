@@ -1,6 +1,6 @@
 // One background job (LLD §8.2): its parameters, counters, failure reason and the live log viewer.
 
-import { ArrowLeft, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Ban, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 
@@ -146,6 +146,16 @@ export default function BackgroundJobDetailPage() {
                 <TriangleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
                 <div>
                   <p className="text-sm font-semibold text-foreground">Why it failed</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{data.error_message}</p>
+                </div>
+              </div>
+            )}
+            {data.status === 'cancelled' && data.error_message && (
+              // A run the system stopped, e.g. a match run superseded by a newer one: a note, not an error.
+              <div className="flex gap-3 rounded-xl border border-border bg-foreground/[0.03] p-4">
+                <Ban className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Why it was cancelled</p>
                   <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{data.error_message}</p>
                 </div>
               </div>

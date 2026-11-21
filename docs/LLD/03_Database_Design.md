@@ -178,7 +178,7 @@ Example `score_breakdown` (shape only):
 | background_job_id | UUID | **PK** | |
 | type | text | NOT NULL; CHECK in (`crawl`, `resume`, `match`) | |
 | status | text | NOT NULL; CHECK in (`queued`, `running`, `completed`, `failed`, `cancelled`) | Lifecycle from the brief (Part 5). |
-| params | JSONB | | Crawl configuration, or for a resume job the stored files: `upload_id`, `stored_file` (`<upload_id>.pdf`) and `size_bytes` of each. Never the original file names. |
+| params | JSONB | | Crawl configuration, or for a resume job the stored files: `upload_id`, `stored_file` (`<upload_id>.pdf`) and `size_bytes` of each. Never the original file names. For a match run: its `weights` (Part 7, Section 7.4) and, when a crawl queued it, `after_crawl` (that crawl's ID, Section 7.1). |
 | progress_current, progress_total | integer | CHECK `progress_current ≥ 0` | |
 | items_succeeded, items_failed | integer | | Counters shown in the UI. |
 | cancel_requested | boolean | | Set by the API; checked by the worker between items. |

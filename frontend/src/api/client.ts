@@ -25,6 +25,8 @@ import type {
   JobMatches,
   LogLevel,
   LogList,
+  MatchWeights,
+  MatchWeightsInfo,
   ResumeJobCreated,
   SkillList,
 } from '@/types/api'
@@ -144,8 +146,14 @@ export function createResumeJob(files: File[]): Promise<ResumeJobCreated> {
   return request<ResumeJobCreated>('/background-jobs/resume', { method: 'POST', body: form })
 }
 
-export function createMatchJob(): Promise<BackgroundJobCreated> {
-  return postJson<BackgroundJobCreated>('/background-jobs/match')
+/** POST /background-jobs/match. Without weights the run uses the active weights (LLD §7.4). */
+export function createMatchJob(weights?: MatchWeights): Promise<BackgroundJobCreated> {
+  return postJson<BackgroundJobCreated>('/background-jobs/match', weights ? { weights } : undefined)
+}
+
+/** GET /matching/weights: the default, active and current-results weights. */
+export function getMatchWeights(signal?: AbortSignal): Promise<MatchWeightsInfo> {
+  return get<MatchWeightsInfo>('/matching/weights', signal)
 }
 
 // --- Jobs and candidates (LLD §4.5-4.6) -------------------------------------------------------

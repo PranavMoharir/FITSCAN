@@ -4,9 +4,20 @@
 
 ## 7.1 When Matching Runs
 
-Matching runs as a **`match` background job**. The user starts it with the "Recompute matches" button, which calls `POST /background-jobs/match`. It scores every candidate against every job and stores the results, so match pages and exports only read stored rows (ADR-019).
+Matching runs as a **`match` background job**. The user starts it with the "Recompute matches" button, which calls `POST /background-jobs/match`, or a crawl queues it automatically (below). It scores every candidate against every job and stores the results, so match pages and exports only read stored rows (ADR-019).
 
-The job page and candidate page show `computed_at` ("matches last computed"), so stale results are visible. Automatic re-matching when new jobs arrive is a **Could** feature and is not part of the baseline.
+The job page and candidate page show `computed_at` ("matches last computed"), so stale results are visible.
+
+**Automatic re-matching** (Could feature, implemented 22 November 2026). When a crawl has its final status, the crawl task (`rematch_after_crawl` in `worker/tasks.py`) checks whether the crawl saved a job that is new or whose match inputs changed (Part 5, Section 5.17). If so, and the crawl ended `completed` or `failed` (a failed crawl keeps the jobs it saved), it calls `request_auto_match` (`services/background_jobs.py`). A cancelled crawl never queues a run, and with `AUTO_REMATCH=false` nothing is queued. `request_auto_match` takes the same advisory lock as `POST /background-jobs/match` as the first statement of its transaction, so manual and automatic requests are decided one at a time, and then:
+
+| Situation | Outcome |
+|---|---|
+| A match run was already queued for this crawl | Nothing more |
+| A match run is `queued` | Nothing more: it loads every job when it starts, so it includes this crawl's jobs. A `running` run does not count, because it may have loaded the jobs before they were saved. |
+| No candidates | Nothing to match |
+| Otherwise | A new `queued` run with the active weights (Section 7.4); `params` = `{weights, after_crawl}` |
+
+Every outcome is written to the crawl's log. If the broker is down, the new run is marked `failed` ("could not be queued") and the crawl's log says so; the crawl's status never changes. The automatic run then works like any other run, including the rule that an older run never overwrites a newer run's results (Section 7.9). Resume uploads do not queue a run.
 
 ## 7.2 Inputs
 
@@ -66,6 +77,8 @@ score = 70 × (required skills the candidate has / total required skills)
 ```
 
 Each factor is between 0 and 1, and the weights add up to 100, so the score is always between 0 and 100. The score is clamped to [0, 100] as a guard.
+
+**Weights per run** (Could feature, implemented 22 November 2026). The default weights 70, 15, 10, 5 come from `MATCH_WEIGHTS`. A run can be started with its own weights (`POST /background-jobs/match` with `{"weights": {"required": …, "nice": …, "experience": …, "location": …}}`): four whole numbers from 0 to 100 that add up to exactly 100. A set that breaks this rule is refused with 422, never rescaled. The resolved weights are stored in the run's `params.weights` and the worker scores with them; only the weights change, never the formula or the edge-case rules (Section 7.5). A run started without weights uses the **active weights**: those of the most recently created match run that is queued, running or completed and recorded weights. A failed or cancelled run (superseded runs included, Section 7.9) never changes them; with no such run they are `MATCH_WEIGHTS`. `GET /matching/weights` returns the default and active weights and the weights of the run whose results are stored. Runs from before weights were recorded have `params = null`: their weights show as "not recorded", while their stored points and explanations still show what each match received. A job queued before runs recorded weights uses `MATCH_WEIGHTS`, as before.
 
 | Component | Rule | Example |
 |---|---|---|
@@ -139,9 +152,9 @@ English stop words are removed. A missing or empty text has similarity 0 to ever
 
 ## 7.9 Saving Results
 
-Just before this step, the engine writes one more heartbeat, so the stale-job check never mistakes the final write for a lost worker (Section 5.8). All rows are written in **one transaction** that deletes the previous `matches` rows and inserts the new ones, with `computed_at` set. Readers therefore see either the old complete result set or the new one, never a half-written mix. If the job is cancelled or fails before this step, the previous results stay unchanged.
+Just before this step, the engine writes one more heartbeat, so the stale-job check never mistakes the final write for a lost worker (Section 5.8). All rows are written in **one transaction** that deletes the previous `matches` rows, inserts the new ones with `computed_at` set, and marks the run `completed`. Readers therefore see either the old complete result set or the new one, never a half-written mix, and `completed` always means the results were saved. If the run is no longer `running` at that point (for example the stale-job check failed it), the transaction is rolled back and nothing is saved. If the job is cancelled or fails before this step, the previous results stay unchanged.
 
-The transaction first takes `LOCK TABLE matches IN EXCLUSIVE MODE`. Plain reads continue, but two match runs that finish at the same time save one after the other, so the second one deletes the first one's rows instead of colliding with them.
+The transaction first takes `LOCK TABLE matches IN EXCLUSIVE MODE`. Plain reads continue, but saving runs take turns. Two runs can be in progress at once, and the one that started later (its `started_at` is set when the worker claims it, just before it loads the data) read newer data. So after taking the lock, a run checks for a completed match run that started after it (an exact tie on `started_at` is ordered by run ID). If there is one, the run saves nothing and ends `cancelled` with the reason "Superseded: a newer match run (#…) saved its results first; these results were not saved." An older run therefore never replaces a newer run's results, whichever of the two finishes first.
 
 A run with no candidates or no jobs fails at once ("No candidates to match: upload resumes first." or "No jobs to match: run a crawl first.") and changes nothing. A candidate whose scoring fails is logged and counted as failed, and the others are still saved; if every candidate fails, the job fails and nothing is saved.
 
@@ -217,4 +230,4 @@ If data grows far beyond assignment size, HLD §10.10 documents the scale path. 
 
 1. vectorized sparse-matrix scoring, with its rankings first checked against the exact version;
 2. storing only each candidate's and each job's top 10;
-3. incremental recompute for new jobs (the **Could** feature).
+3. incremental recompute for new jobs (automatic re-matching, Section 7.1, runs a full recompute).

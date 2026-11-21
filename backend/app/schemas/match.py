@@ -140,3 +140,34 @@ class MatchExportRow(BaseModel):
     text_similarity: Similarity
     explanation: str
     computed_at: datetime
+
+
+# --- GET /matching/weights (LLD §4.5, §7.4) -----------------------------------------------------------
+
+
+class WeightValues(BaseModel):
+    """Weights of the required, nice-to-have, experience and location components; they add up to 100."""
+
+    required: int | float
+    nice: int | float
+    experience: int | float
+    location: int | float
+
+
+class ActiveWeights(BaseModel):
+    weights: WeightValues
+    source: Literal["match_run", "default"] = Field(
+        description="match_run: the most recently created queued, running or completed run with recorded weights; "
+                    "default: no such run, so MATCH_WEIGHTS")
+    background_job_id: uuid.UUID | None = Field(description="The run the weights come from (source match_run)")
+
+
+class ResultsWeights(BaseModel):
+    background_job_id: uuid.UUID = Field(description="The run whose results are stored: the completed run that started last")
+    weights: WeightValues | None = Field(description="null when the run is from before weights were recorded")
+
+
+class MatchWeightsInfo(BaseModel):
+    default: WeightValues = Field(description="MATCH_WEIGHTS: 70, 15, 10, 5 unless configured otherwise")
+    active: ActiveWeights = Field(description="Used by a match run that is started without weights")
+    results: ResultsWeights | None = Field(description="null when no match run has completed yet")

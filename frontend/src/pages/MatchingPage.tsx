@@ -2,10 +2,10 @@
 // quick way to open any candidate's or job's top matches. Uses only existing endpoints.
 
 import { ArrowRight, Briefcase, Gauge, MapPin, Search, Sparkles, Target, Users } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
-import { listBackgroundJobs, searchCandidates, searchJobs } from '@/api/client'
+import { getMatchWeights, listBackgroundJobs, searchCandidates, searchJobs } from '@/api/client'
 import { noun, progressText } from '@/components/app/job-text'
 import { PageHeader } from '@/components/app/PageHeader'
 import { Panel } from '@/components/app/Panel'
@@ -16,22 +16,25 @@ import { StatusBadge } from '@/components/app/StatusBadge'
 import { useReloadWhenHealthy } from '@/components/app/system-status'
 import { useToast } from '@/components/app/toaster'
 import { RecomputeMatchesDialog } from '@/components/background-jobs/actions'
+import { sameWeights, WEIGHT_PARTS, weightsText } from '@/components/matches/WeightsEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useDebouncedParam } from '@/hooks/useDebouncedParam'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePolling } from '@/hooks/usePolling'
 import { useResource } from '@/hooks/useResource'
 import { POLL_INTERVAL_MS } from '@/lib/app'
-import { formatNumber, isActive } from '@/lib/format'
+import { formatNumber, isActive, shortId } from '@/lib/format'
+import type { MatchWeightsInfo } from '@/types/api'
 
 const DIMENSIONS = [
-  { icon: Sparkles, letter: 'R', weight: 70, title: 'Required skills', text: 'The share of the job’s must-have skills the candidate has.' },
-  { icon: Gauge, letter: 'N', weight: 15, title: 'Nice-to-have skills', text: 'The share of the preferred skills the candidate brings.' },
-  { icon: Briefcase, letter: 'E', weight: 10, title: 'Experience', text: 'Years of experience against the job’s stated minimum.' },
-  { icon: MapPin, letter: 'L', weight: 5, title: 'Location', text: 'Same city, or a remote role.' },
-]
+  { icon: Sparkles, letter: 'R', key: 'required', title: 'Required skills', text: 'The share of the job’s must-have skills the candidate has.' },
+  { icon: Gauge, letter: 'N', key: 'nice', title: 'Nice-to-have skills', text: 'The share of the preferred skills the candidate brings.' },
+  { icon: Briefcase, letter: 'E', key: 'experience', title: 'Experience', text: 'Years of experience against the job’s stated minimum.' },
+  { icon: MapPin, letter: 'L', key: 'location', title: 'Location', text: 'Same city, or a remote role.' },
+] as const
 
 async function loadRuns(signal: AbortSignal) {
   const [latest, completed, jobs, candidates] = await Promise.all([
@@ -43,12 +46,18 @@ async function loadRuns(signal: AbortSignal) {
   return { latest: latest.items[0] ?? null, lastCompleted: completed.items[0] ?? null, runs: latest.total, jobs: jobs.total, candidates: candidates.total }
 }
 
-function LastRun({ onRecompute }: { onRecompute: () => void }) {
+function LastRun({ onRecompute, onRunEnded }: { onRecompute: () => void; onRunEnded: () => void }) {
   const runs = useResource(loadRuns, [])
   const latest = runs.data?.latest
   const live = latest ? isActive(latest.status) : false
   usePolling(runs.reload, POLL_INTERVAL_MS, live)
   useReloadWhenHealthy(runs.reload, Boolean(runs.error))
+  // A run that ends while the page is open can change which weights the current matches used.
+  const wasLive = useRef(false)
+  useEffect(() => {
+    if (wasLive.current && !live) onRunEnded()
+    wasLive.current = live
+  }, [live, onRunEnded])
 
   const d = runs.data
   return (
@@ -112,10 +121,54 @@ function LastRun({ onRecompute }: { onRecompute: () => void }) {
   )
 }
 
-function Formula() {
+/** Where the active weights come from, and what the stored results were computed with when that differs. */
+function WeightsSource({ info }: { info: MatchWeightsInfo }) {
+  const { active, results } = info
+  const fromRun = active.source === 'match_run' && active.background_job_id
+  return (
+    <div className="mt-3 grid gap-1.5 text-[13px] leading-relaxed text-muted-foreground">
+      <p>
+        {fromRun ? (
+          <>
+            Active weights, chosen for{' '}
+            <Link to={`/background-jobs/${active.background_job_id}`} className="rounded font-medium text-accent-ink underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
+              run #{shortId(active.background_job_id!)}
+            </Link>
+            .{' '}
+          </>
+        ) : (
+          'Active weights: the defaults. '
+        )}
+        {sameWeights(active.weights, info.default) ? (fromRun ? 'They are the defaults.' : '') : `The defaults are ${weightsText(info.default)}.`}
+      </p>
+      {results && !results.weights ? (
+        <p>The current matches are from a run before weights were recorded (weights not recorded).</p>
+      ) : results?.weights && !sameWeights(results.weights, active.weights) ? (
+        <p>The current matches were computed with {weightsText(results.weights)}.</p>
+      ) : null}
+    </div>
+  )
+}
+
+function Formula({ refresh }: { refresh: number }) {
+  const weights = useResource(getMatchWeights, [refresh])
+  useReloadWhenHealthy(weights.reload, Boolean(weights.error))
+  const info = weights.data
+  const w = info?.active.weights
   return (
     <Panel id="formula" title="How a score is computed" description="Every candidate is scored against every job with one weighted formula.">
-      <p className="rounded-lg bg-foreground/[0.03] px-4 py-3 font-mono text-[13px] text-foreground">Score = 70R + 15N + 10E + 5L</p>
+      {weights.error && !info ? (
+        <ErrorNotice error={weights.error} onRetry={() => void weights.reload()} />
+      ) : !w || !info ? (
+        <Skeleton className="h-11 rounded-lg" />
+      ) : (
+        <>
+          <p className="rounded-lg bg-foreground/[0.03] px-4 py-3 font-mono text-[13px] text-foreground">
+            Score = {WEIGHT_PARTS.map((p) => `${formatNumber(w[p.key])}${p.letter}`).join(' + ')}
+          </p>
+          <WeightsSource info={info} />
+        </>
+      )}
       <ul className="mt-4 grid gap-3 sm:grid-cols-2">
         {DIMENSIONS.map((d) => (
           <li key={d.letter} className="flex gap-3 rounded-lg p-1">
@@ -124,7 +177,11 @@ function Formula() {
             </span>
             <div>
               <p className="text-sm font-medium text-foreground">
-                {d.title} <span className="font-mono text-xs text-subtle-foreground">({d.letter}, up to {d.weight})</span>
+                {d.title}{' '}
+                <span className="font-mono text-xs text-subtle-foreground">
+                  ({d.letter}
+                  {w ? `, up to ${formatNumber(w[d.key])}` : ''})
+                </span>
               </p>
               <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{d.text}</p>
             </div>
@@ -132,7 +189,7 @@ function Formula() {
         ))}
       </ul>
       <p className="mt-4 text-xs leading-relaxed text-subtle-foreground">
-        Each part is a fraction from 0 to 1. These are the default weights; the server’s MATCH_WEIGHTS setting can change them, and each match’s breakdown shows the points it actually received. Text similarity is used only to order exact-score ties; it never changes a score.
+        Each part is a fraction from 0 to 1. The weights are whole numbers that add up to 100; choose them when you recompute matches, and each run records the weights it used. Each match’s breakdown shows the points it actually received. Text similarity is used only to order exact-score ties; it never changes a score.
       </p>
     </Panel>
   )
@@ -225,6 +282,8 @@ export default function MatchingPage() {
   const toast = useToast()
   const [recompute, setRecompute] = useState(false)
   const [key, setKey] = useState(0)
+  const [runsEnded, setRunsEnded] = useState(0)
+  const onRunEnded = useCallback(() => setRunsEnded((n) => n + 1), [])
   return (
     <>
       <PageHeader
@@ -239,8 +298,8 @@ export default function MatchingPage() {
       />
       <div className="grid items-start gap-4 lg:grid-cols-5 lg:gap-5">
         <div className="grid gap-4 lg:col-span-3 lg:gap-5">
-          <LastRun key={key} onRecompute={() => setRecompute(true)} />
-          <Formula />
+          <LastRun key={key} onRecompute={() => setRecompute(true)} onRunEnded={onRunEnded} />
+          <Formula key={key} refresh={runsEnded} />
         </div>
         <div className="lg:col-span-2">
           <Lookup />

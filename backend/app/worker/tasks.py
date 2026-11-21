@@ -13,21 +13,23 @@ from datetime import date
 
 from celery.exceptions import SoftTimeLimitExceeded
 
-from app.config import Settings, get_settings
+from app.config import MatchWeights, Settings, get_settings
 from app.crawler import browser, fetcher as fetcher_module
 from app.crawler.fetcher import Fetcher
 from app.crawler.frontier import Crawler, CrawlSettings, CrawlStats, SeedRejectedError
 from app.crawler.pipeline import BuiltRecord, SaveResult, save_records
 from app.crawler.rate_limiter import RateLimiter
 from app.db.session import session_scope
+from app.errors import AppError
 from app.extractors.registry import get_registry
-from app.matching.engine import MatchRow, load_inputs, save_matches, score_candidate
+from app.matching.engine import MatchRow, find_newer_completed_run, load_inputs, save_matches, score_candidate
 from app.matching.explanation import display
 from app.matching.scoring import Weights
 from app.matching.tfidf import TextSimilarity
 from app.models import BackgroundJob
 from app.resumes.pipeline import FileFailed, file_sha256, find_by_file, parse_resume, save_candidate
 from app.resumes.validation import read_source_file, stored_name
+from app.services.background_jobs import WEIGHT_KEYS, recorded_weights, request_auto_match
 from app.worker import progress
 from app.worker.celery_app import celery_app
 
@@ -49,6 +51,7 @@ class JobRun:
         self.total = total         # progress_total while running: max_pages, or the number of files
         self.cancel_seen = False   # the user asked to stop
         self.not_running = False   # someone else ended the job (e.g. the stale-job check)
+        self.match_inputs_changed: set[uuid.UUID] = set()  # crawl: jobs saved new or with changed match inputs
 
     def log(self, level: str, message: str, **context) -> None:
         with session_scope() as session:
@@ -76,7 +79,9 @@ class JobRun:
 
     def save(self, records: list[BuiltRecord]) -> SaveResult:
         with session_scope() as session:
-            return save_records(session, records, self.job_id)
+            result = save_records(session, records, self.job_id)
+        self.match_inputs_changed.update(result.match_inputs_changed)  # counted once committed
+        return result
 
     def page_done(self, stats: CrawlStats) -> bool:
         """Progress + heartbeat after every page; True tells the crawler to stop."""
@@ -124,6 +129,14 @@ def run_crawl_job(job_id: uuid.UUID) -> str:
         params = dict(session.get(BackgroundJob, job_id).params or {})
 
     run = JobRun(job_id, total=params.get("max_pages"))
+    outcome = _crawl(run, params)
+    rematch_after_crawl(run)
+    return outcome
+
+
+def _crawl(run: JobRun, params: dict) -> str:
+    """The crawl itself, to its final state. Returns the final status."""
+    job_id = run.job_id
     try:
         run.log("INFO", f"Crawl started: {params['seed_url']} (max_depth {params['max_depth']}, "
                         f"max_pages {params['max_pages']}, allowed domains {', '.join(params['allowed_domains'])})")
@@ -164,6 +177,59 @@ def run_crawl_job(job_id: uuid.UUID) -> str:
     run.log("ERROR", message)
     run.finish("failed", message)
     return "failed"
+
+
+def rematch_after_crawl(run: JobRun) -> None:
+    """Automatic re-matching (LLD §7.1): queue a match run if the crawl saved new or changed jobs.
+
+    Only after a crawl that ended completed or failed (a failed crawl keeps the jobs it saved),
+    never after a cancelled one, and only with AUTO_REMATCH on. The run uses the active weights.
+    Best effort: nothing here changes the crawl's status; every outcome goes to the crawl's log.
+    """
+    changed = len(run.match_inputs_changed)
+    if not changed:
+        return  # nothing matching reads has changed: re-fetched jobs that are the same do not count
+    summary = (f"{_plural(changed, 'job')} saved by this crawl {'is' if changed == 1 else 'are'} "
+               "new or changed in what matching reads")
+    try:
+        with session_scope() as session:
+            status = session.get(BackgroundJob, run.job_id).status
+        if status not in ("completed", "failed"):
+            if status == "cancelled":
+                run.log("INFO", f"{summary}. The crawl was cancelled, so no match run was queued; "
+                                "recompute matches to include them.", jobs_changed=changed)
+            return
+        if not get_settings().auto_rematch:
+            run.log("INFO", f"{summary}. AUTO_REMATCH is off, so no match run was queued; "
+                            "recompute matches to include them.", jobs_changed=changed)
+            return
+        with session_scope() as session:
+            outcome, match_id = request_auto_match(session, run.job_id)
+            weights = recorded_weights(session.get(BackgroundJob, match_id).params) if outcome == "queued" else None
+    except AppError:  # the broker is down; the new match run is marked failed with the reason
+        run.log("WARNING", f"{summary}, but the automatic match run could not be queued: the message broker "
+                           "is unavailable. Recompute matches when it is back.", jobs_changed=changed)
+        return
+    except Exception as exc:
+        logger.error("Automatic match run after crawl %s failed: %s", run.job_id, safe_traceback(exc))
+        try:
+            run.log("WARNING", f"{summary}, but the automatic match run could not be requested "
+                               f"({type(exc).__name__}). Recompute matches to include them.", jobs_changed=changed)
+        except Exception:
+            logger.error("Could not log the automatic match run's failure for crawl %s", run.job_id)
+        return
+
+    short = f"#{str(match_id)[:8]}" if match_id else ""
+    if outcome == "queued":
+        text = " / ".join(f"{float(weights[key]):g}" for key in WEIGHT_KEYS) if weights else "unknown"
+        message = f"{summary}: match run {short} was queued automatically with the active weights ({text})."
+    elif outcome == "already_queued":
+        message = f"{summary}; match run {short} is already queued and will include them, so no other run was queued."
+    elif outcome == "already_requested":
+        message = f"{summary}; match run {short} was already queued for this crawl."
+    else:
+        message = f"{summary}, but there are no candidates yet, so no match run was queued."
+    run.log("INFO", message, jobs_changed=changed, match_run_id=str(match_id) if match_id else None)
 
 
 @celery_app.task(name="crawl", soft_time_limit=CRAWL_SOFT_TIME_LIMIT_SECONDS, time_limit=CRAWL_SOFT_TIME_LIMIT_SECONDS + 60)
@@ -346,7 +412,15 @@ def resume(background_job_id: str) -> str:
 # One item = one candidate scored against every job. Nothing is written to `matches` until all
 # candidates are scored; then all rows are replaced in one transaction. A cancelled, failed or
 # stopped run therefore leaves the previous results exactly as they were (LLD §5.7, §7.9).
+#
+# The saving transaction also marks the run completed, so "completed" always means "results
+# saved". If a run that started later has already saved, this run saves nothing and ends
+# cancelled ("superseded"): an older run never replaces newer results (LLD §7.9).
 # Log lines name candidates by the first 8 characters of their ID, never by name.
+
+
+class _RunEndedElsewhere(Exception):
+    """The run stopped being `running` before its results were saved (e.g. the stale-job check)."""
 
 
 def _plural(count: int, word: str, plural: str | None = None) -> str:
@@ -387,10 +461,18 @@ def run_match_job(job_id: uuid.UUID) -> str:
         if not progress.claim(session, job_id):
             logger.info("Match job %s is not queued (cancelled, unknown or already taken); nothing to do", job_id)
             return "not-claimed"
+        job = session.get(BackgroundJob, job_id)
+        started_at = job.started_at  # set by the claim; orders the runs
+        recorded = recorded_weights(job.params)  # stored when the run was created (LLD §7.4)
+        after_crawl = job.params.get("after_crawl") if isinstance(job.params, dict) else None
 
     run = JobRun(job_id, total=None)
     try:
-        weights = Weights.from_settings(get_settings().match_weights)
+        if after_crawl:
+            run.log("INFO", f"Started automatically after crawl #{str(after_crawl)[:8]} saved new or changed jobs.",
+                    after_crawl=str(after_crawl))
+        # A job queued before runs recorded their weights has none: it uses MATCH_WEIGHTS, as before.
+        weights = Weights.from_settings(MatchWeights(**recorded) if recorded else get_settings().match_weights)
         with session_scope() as session:
             jobs, candidates = load_inputs(session)
         run.total = len(candidates)
@@ -403,6 +485,9 @@ def run_match_job(job_id: uuid.UUID) -> str:
         no_skills = sum(1 for job in jobs if job.profile.has_no_skills)
         run.log("INFO", f"Matching started: {_plural(len(candidates), 'candidate')} × {_plural(len(jobs), 'job')} "
                         f"({len(candidates) * len(jobs)} pairs).")
+        run.log("INFO", f"Weights: required {float(weights.required):g}, nice-to-have {float(weights.nice):g}, "
+                        f"experience {float(weights.experience):g}, location {float(weights.location):g}"
+                        + ("." if recorded else " (MATCH_WEIGHTS; this run has no recorded weights)."))
         if no_skills:
             max_without_skills = display(float(weights.experience + weights.location))
             run.log("INFO", f"{no_skills} of {len(jobs)} jobs have no identified skills: they score R = 0 and N = 0, "
@@ -426,12 +511,27 @@ def run_match_job(job_id: uuid.UUID) -> str:
         if run.not_running:
             logger.warning("Match job %s was ended elsewhere before saving; nothing was saved", job_id)
             return "not-running"
-        with session_scope() as session:
-            computed_at = save_matches(session, rows)
-        run.log("INFO", f"Saved {_plural(len(rows), 'match', 'matches')} for {_plural(succeeded, 'candidate')}"
+        try:
+            with session_scope() as session:  # ONE transaction: check, save, log, complete
+                newer = find_newer_completed_run(session, job_id, started_at)  # takes the lock first
+                if newer is None:
+                    computed_at = save_matches(session, rows)
+                    progress.add_log(
+                        session, job_id, "INFO",
+                        f"Saved {_plural(len(rows), 'match', 'matches')} for {_plural(succeeded, 'candidate')}"
                         f"{f' ({failed} failed)' if failed else ''}; computed at {computed_at.isoformat()}.",
-                matches=len(rows), candidates_failed=failed)
-        run.finish("completed")
+                        matches=len(rows), candidates_failed=failed)
+                    if not progress.finish(session, job_id, "completed"):
+                        raise _RunEndedElsewhere  # rolls the whole transaction back: nothing is saved
+        except _RunEndedElsewhere:
+            logger.warning("Match job %s was ended elsewhere before its results were saved; nothing was saved", job_id)
+            return "not-running"
+        if newer is not None:
+            reason = (f"Superseded: a newer match run (#{str(newer)[:8]}) saved its results first; "
+                      "these results were not saved.")
+            run.log("INFO", f"{reason} The current matches are from that run.", newer_run_id=str(newer))
+            run.finish("cancelled", reason)
+            return "cancelled"
         return "completed"
     except SoftTimeLimitExceeded:
         run.log("ERROR", "Time limit exceeded; the match run was stopped. The previous matches are unchanged.")

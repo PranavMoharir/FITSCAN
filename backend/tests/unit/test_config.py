@@ -81,6 +81,13 @@ def test_match_weights_from_env(monkeypatch):
     assert s.match_weights.location == 5
 
 
+def test_auto_rematch_is_on_by_default_and_can_be_turned_off(monkeypatch):
+    assert _settings(monkeypatch).auto_rematch is True
+    assert _settings(monkeypatch, AUTO_REMATCH="false").auto_rematch is False
+    with pytest.raises(ValidationError):
+        _settings(monkeypatch, AUTO_REMATCH="sometimes")
+
+
 @pytest.mark.parametrize("value", ["70,15,10", "70,15,10,10", "70,15,20,-5", "a,b,c,d"])
 def test_invalid_match_weights_are_rejected(monkeypatch, value):
     with pytest.raises(ValidationError):

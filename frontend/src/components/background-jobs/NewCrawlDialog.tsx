@@ -2,7 +2,7 @@ import { Loader2 } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import { createCrawlJob } from '@/api/client'
-import { Field, FormAlert } from '@/components/app/form'
+import { errorSentence as sentence, Field, FormAlert } from '@/components/app/form'
 import { describeError } from '@/components/app/states'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -150,10 +150,4 @@ export function NewCrawlDialog({ open, onOpenChange, onCreated }: NewCrawlDialog
       </DialogContent>
     </Dialog>
   )
-}
-
-/** "must be at most 500 (CRAWLER_MAX_PAGES_LIMIT)" as a sentence: capitalised, without Pydantic's prefix. */
-function sentence(message: string): string {
-  const text = message.replace(/^Value error, /, '').trim()
-  return text ? text[0].toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? '' : '.') : 'This value is not valid.'
 }

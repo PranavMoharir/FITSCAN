@@ -9,6 +9,11 @@ The upsert merges: newer non-empty values overwrite older ones, and empty values
 known ones. So a job seen on a listing page and later on its detail page becomes one complete
 record (LLD §3.6). Skill links are replaced only when the new record carries skill information
 (a description or structured skill lists), so a later listing card cannot erase them.
+
+Each save also says which jobs are new or have changed match inputs (`SaveResult.match_inputs_changed`):
+the values matching reads (LLD §7.2) as stored before and after the save. A job that is fetched
+again unchanged, or whose only change is a column matching never reads, is not counted. This
+drives automatic re-matching after a crawl (LLD §7.1).
 """
 
 import uuid
@@ -16,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import case, delete, func, literal_column, or_
+from sqlalchemy import case, delete, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -42,6 +47,10 @@ from app.skills.sync import skill_ids
 _MERGED_COLUMNS = ("company", "location", "salary_min", "salary_max", "salary_currency", "salary_period",
                    "salary_text", "posted_date", "description", "min_experience_years")
 
+# The job columns matching reads (engine.load_inputs), besides the required and nice-to-have skills.
+# The description is the job's text for the TF-IDF tie-breaker.
+MATCH_INPUT_COLUMNS = ("description", "min_experience_years", "location", "is_remote")
+
 
 @dataclass
 class BuiltRecord:
@@ -55,6 +64,8 @@ class BuiltRecord:
 class SaveResult:
     inserted: int = 0
     updated: int = 0
+    # Jobs saved new, or whose skills, minimum experience, location, remote flag or description changed
+    match_inputs_changed: list[uuid.UUID] = field(default_factory=list)
 
     @property
     def saved(self) -> int:
@@ -111,11 +122,23 @@ def build_record(raw: RawJob, *, page_url: str, source: str, fetched_at: datetim
     return BuiltRecord(record, skills_known, skills.unmatched, warnings)
 
 
+def _skill_links(session: Session, job_id: uuid.UUID) -> set[tuple[uuid.UUID, str]]:
+    rows = session.execute(select(JobSkill.skill_id, JobSkill.requirement_level).where(JobSkill.job_id == job_id))
+    return {(skill_id, level) for skill_id, level in rows}
+
+
 def save_records(session: Session, records: list[BuiltRecord], background_job_id: uuid.UUID | None) -> SaveResult:
     """Upsert the records and their skill links. The caller commits."""
     result = SaveResult()
+    match_columns = [Job.__table__.c[column] for column in MATCH_INPUT_COLUMNS]
     for built in records:
         record = built.record
+        # The stored match inputs before this save. FOR UPDATE: a concurrent crawl saving the same
+        # job waits for this transaction, so each save compares against the latest committed values.
+        before = session.execute(select(Job.job_id, *match_columns).where(Job.dedup_key == record.dedup_key)
+                                 .with_for_update()).first()
+        links_before = _skill_links(session, before.job_id) if before else set()
+
         values = record.model_dump(exclude={"required_skills", "nice_to_have_skills"})
         statement = insert(Job).values(job_id=uuid.uuid4(), background_job_id=background_job_id, **values)
         new = statement.excluded
@@ -133,13 +156,14 @@ def save_records(session: Session, records: list[BuiltRecord], background_job_id
         )
         row = session.execute(
             statement.on_conflict_do_update(index_elements=[Job.dedup_key], set_=updates)
-            .returning(Job.job_id, literal_column("(xmax = 0)").label("inserted"))
+            .returning(Job.job_id, literal_column("(xmax = 0)").label("inserted"), *match_columns)
         ).one()
         if row.inserted:
             result.inserted += 1
         else:
             result.updated += 1
 
+        links_after = links_before
         if built.skills_known:
             ids = skill_ids(session, record.required_skills + record.nice_to_have_skills)
             session.execute(delete(JobSkill).where(JobSkill.job_id == row.job_id))
@@ -149,4 +173,10 @@ def save_records(session: Session, records: list[BuiltRecord], background_job_id
                       for name in record.nice_to_have_skills]
             if links:
                 session.execute(insert(JobSkill).values(links))
+            links_after = {(link["skill_id"], link["requirement_level"]) for link in links}
+
+        # New (or saved by a concurrent crawl after the check above), or a match input changed.
+        if (row.inserted or before is None or tuple(before[1:]) != tuple(row[2:])
+                or links_after != links_before):
+            result.match_inputs_changed.append(row.job_id)
     return result

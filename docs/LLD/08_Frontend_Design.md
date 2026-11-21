@@ -23,12 +23,12 @@ Each page is one component in `src/pages/`:
 | `/` | Landing page | The public FITSCAN marketing page: what the platform does, an interactive product preview built on sample data (no API calls), and links into the application. Unknown paths redirect here. |
 | `/app` | Dashboard | The entry point into the FITSCAN application, linked from the landing page. Counts of jobs, candidates and skills; background jobs by status with live progress; recent runs; the last completed run of each step; system status (API, PostgreSQL and Redis, from `GET /health`). |
 | `/background-jobs` | Background jobs | Table of background jobs: type, status badge, progress bar, timestamps. "New crawl" form (seed URL, `max_depth`, `max_pages`, allowed domains). "Upload resumes" dialog (several files at once). "Recompute matches" button. Cancel button on active jobs. |
-| `/background-jobs/:id` | Background job detail | The job's parameters, succeeded and failed counters, failure reason if any, and a live log viewer with a level filter |
+| `/background-jobs/:id` | Background job detail | The job's parameters (a match run queued by a crawl names and links that crawl), succeeded and failed counters, failure reason if any, and a live log viewer with a level filter |
 | `/jobs` | Jobs | Searchable, paginated table: title, company, location, job type, posted date, required skills. Export CSV / JSON buttons. |
 | `/jobs/:id` | Job detail | Job fields, then the top 10 candidates. Each shows the score, matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level, and the explanation. |
 | `/candidates` | Candidates | Searchable, paginated table: name, current title, city, years of experience, skills, OCR flag. Export CSV / JSON buttons for the candidates, plus "Export match table" (CSV / JSON) for the same candidates' top 10 jobs. |
 | `/candidates/:id` | Candidate detail | Candidate fields, any parse warnings, then the top 10 jobs, presented the same way as on the job detail page |
-| `/matching` | Matching | Scoring formula, latest match run (live while it runs), "Recompute matches", and a search to open any candidate's or job's top matches. |
+| `/matching` | Matching | Scoring formula with the active weights (and the weights of the current results when they differ or were not recorded), latest match run (live while it runs), "Recompute matches" with the weights form, and a search to open any candidate's or job's top matches. |
 | `/skills` | Skills | Canonical skills from `GET /skills` by category, each linking to Jobs and Candidates filtered by that skill. |
 | `/exports` | Exports | Full CSV/JSON downloads of jobs, candidates and the match table (jobs per candidate selectable); filtered exports stay on Jobs and Candidates. |
 
@@ -55,7 +55,7 @@ The TypeScript types can be generated from the API's OpenAPI document, so a chan
 |---|---|
 | Submit the crawl form | `POST /background-jobs/crawl` (JSON) |
 | Upload resumes | `POST /background-jobs/resume` (`multipart/form-data`, field `files`, one or more) |
-| Click "Recompute matches" | `POST /background-jobs/match` |
+| Click "Recompute matches" (weights form, filled from `GET /matching/weights`) | `POST /background-jobs/match` with `{"weights": …}` |
 | Cancel a job | `POST /background-jobs/{id}/cancel` |
 | Search a table | `GET /jobs` or `GET /candidates` with `q`, filters, `page`, `page_size` |
 | Open a detail page | `GET /jobs/{id}` + `GET /jobs/{id}/matches`, or `GET /candidates/{id}` + `GET /candidates/{id}/matches` |
@@ -89,7 +89,7 @@ Polling stops when every visible job is `completed`, `failed` or `cancelled`. Po
 |---|---|
 | Crawl jobs | Background jobs page → "New crawl" → fill in seed URL and limits → submit → the new job appears as `queued`, then `running` with a moving progress bar → open it to watch log lines |
 | Upload resumes | "Upload resumes" → choose one or more PDFs → submit → see accepted and rejected files → watch the resume job's progress |
-| Compute matches | "Recompute matches" → watch the `match` job finish → detail pages show the new results and time |
+| Compute matches | "Recompute matches" → keep or change the weights (whole numbers that add up to exactly 100; "Reset to defaults" restores 70, 15, 10, 5) → watch the `match` job finish → detail pages show the new results and time |
 | Cancel | Click Cancel on a queued or running job → it becomes `cancelled`, immediately or after the current item |
 | Browse and search | Jobs or Candidates page → type a search term or a skill (for example "js", which finds JavaScript) → page through results |
 | Review matches | Click a candidate → see their top 10 jobs; click a job → see its top 10 candidates, with matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level |

@@ -6,7 +6,9 @@ stays offline. With the database container published by docker-compose.dev.yml:
     docker compose exec db createdb -U app matching_test
     TEST_DATABASE_URL=postgresql+psycopg://app:change-me@127.0.0.1:5433/matching_test pytest tests/integration
 
-The tests drop and recreate the whole schema, so the database name must end in "_test".
+The tests drop and recreate the whole schema, so they run only against the database named
+`matching_test`: the URL must name it, and the server must confirm it (`current_database()`)
+before anything is dropped. Any other database stops the whole test session at once.
 Each test runs inside a transaction that is rolled back afterwards.
 """
 
@@ -17,6 +19,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
+from tests.conftest import TEST_DATABASE_NAME
 from tests.integration.helpers import TEST_DATABASE_URL, run_alembic
 
 
@@ -25,10 +28,17 @@ def engine() -> Iterator[Engine]:
     """A fresh database: empty schema, then `alembic upgrade head`."""
     if not TEST_DATABASE_URL:
         pytest.skip("TEST_DATABASE_URL is not set (see tests/integration/conftest.py)")
-    if not (make_url(TEST_DATABASE_URL).database or "").endswith("_test"):
-        pytest.fail("TEST_DATABASE_URL must name a database ending in _test; the tests drop its schema")
+    if make_url(TEST_DATABASE_URL).database != TEST_DATABASE_NAME:
+        pytest.exit(f"TEST_DATABASE_URL must name the database {TEST_DATABASE_NAME!r}; the tests drop its schema. "
+                    "Nothing was changed.", returncode=3)
 
     engine = create_engine(TEST_DATABASE_URL, connect_args={"connect_timeout": 3})
+    with engine.connect() as connection:  # ask the server which database this really is, before dropping anything
+        active = connection.execute(text("SELECT current_database()")).scalar_one()
+    if active != TEST_DATABASE_NAME:
+        engine.dispose()
+        pytest.exit(f"Connected to database {active!r}, not {TEST_DATABASE_NAME!r}. Nothing was changed.", returncode=3)
+
     with engine.begin() as connection:  # start from an empty database
         connection.execute(text("DROP SCHEMA public CASCADE"))
         connection.execute(text("CREATE SCHEMA public"))

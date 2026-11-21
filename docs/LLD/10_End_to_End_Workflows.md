@@ -32,6 +32,7 @@ Flows 1–3 are background jobs: the API answers at once with **202 Accepted**, 
 | 9 | Crawler + SQLAlchemy | Upserts into `jobs` by `dedup_key` and saves `job_skills` | Sections 3.6, 5.17 |
 | 10 | `worker/progress.py` | After each page: progress, heartbeat, log lines; checks the cancel flag | Section 5.6 |
 | 11 | React polling | Shows the progress bar and new log lines until the job is `completed`, `failed` or `cancelled` | Section 8.5 |
+| 12 | `worker/tasks.py` + `services/background_jobs.py` | If the crawl ended `completed` (or `failed` after saving jobs) and saved new or changed jobs, queues a `match` run with the active weights, unless `AUTO_REMATCH` is off, there are no candidates or a match run is already queued (Flow 3) | Sections 5.17, 7.1 |
 
 ## 10.3 Flow 2: Uploading and Parsing Resumes
 
@@ -52,7 +53,7 @@ Flows 1–3 are background jobs: the API answers at once with **202 Accepted**, 
 
 | # | Who | What happens | Details |
 |---|---|---|---|
-| 1 | User | Clicks "Recompute matches" | Section 8.7 |
+| 1 | User, or a crawl | Clicks "Recompute matches", or a crawl queues the run automatically (Flow 1, step 12) | Sections 7.1, 8.7 |
 | 2 | React → API | `POST /background-jobs/match`; the API creates a `queued` `match` job and returns 202 | Section 5.4 |
 | 3 | `matching/engine.py` | Loads all jobs and candidates with canonical skills; fits TF-IDF | Section 7.3 |
 | 4 | `matching/scoring.py` | For each candidate and every job, computes R, N, E and L and the exact score with the formula and the edge-case rules | Sections 7.4, 7.5 |

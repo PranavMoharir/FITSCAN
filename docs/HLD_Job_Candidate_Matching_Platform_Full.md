@@ -152,11 +152,11 @@ OCR is the only item marked **Should** in the brief.
 
 | Could feature | Design treatment |
 |---|---|
-| Adjustable scoring weights in the UI | Section 19. The weights are kept as configuration from the start so this is easy to add later. |
-| Semantic matching with embeddings | Section 19. |
-| Re-matching when new jobs arrive | Section 19. The baseline uses a manual "recompute matches" action. |
-| Resuming a stopped crawl | Section 19. |
-| CI pipeline | Section 19. |
+| Adjustable scoring weights in the UI | **Implemented** (22 November 2026): each match run takes optional whole-number weights that add up to exactly 100 and records them (Section 10.6). |
+| Semantic matching with embeddings | **Deferred** (not part of this version): Section 19. |
+| Re-matching when new jobs arrive | **Implemented** (22 November 2026): a crawl that saved new jobs, or changed what matching reads from a job, queues a match run (`AUTO_REMATCH`, Section 8.9). |
+| Resuming a stopped crawl | **Deferred** (not part of this version): Section 19. |
+| CI pipeline | **Implemented** (22 November 2026): GitHub Actions runs the backend tests and the frontend build on every push and pull request to `main` (Section 19). |
 
 ### 4.4 Out of Scope (Design Boundaries)
 
@@ -300,7 +300,7 @@ Priorities are copied from the brief. Rows tagged **[Decision]** are derived req
 
 ### 5.10 Could Features
 
-Adjustable scoring weights in the UI, semantic matching with embeddings, re-matching when new jobs arrive, resuming a stopped crawl and a CI pipeline are **Could** features. They are described only in Section 19.
+Adjustable scoring weights in the UI, semantic matching with embeddings, re-matching when new jobs arrive, resuming a stopped crawl and a CI pipeline are **Could** features (Section 19). Adjustable scoring weights (Section 10.6), re-matching when new jobs arrive (Section 8.9) and the CI pipeline (Section 19) are implemented; semantic matching with embeddings and resuming a stopped crawl are deferred and described only in Section 19.
 
 ## 6. Non-Functional Requirements
 
@@ -779,7 +779,9 @@ An own list is chosen for the baseline because it is small, reviewable and testa
 | Dependencies | Database; scoring weights from configuration. |
 | Interactions | Runs inside the `match` task. The API reads its output for match pages and exports. |
 
-**Trigger [Decision].** Matching is run by a `match` background job started from the UI ("Recompute matches") or the API. Automatic re-matching when new jobs arrive is a **Could** feature and is not part of the baseline. The UI shows when matches were last computed, so stale results are visible.
+**Trigger [Decision].** Matching is run by a `match` background job started from the UI ("Recompute matches") or the API, or automatically after a crawl. The UI shows when matches were last computed, so stale results are visible.
+
+**Automatic re-matching** (the **Could** feature "re-matching when new jobs arrive", implemented 22 November 2026). When a crawl ends `completed`, or `failed` after saving jobs, and it saved a new job or changed what matching reads from a job (required or nice-to-have skills, minimum experience, location, remote flag or description, compared as stored before and after each save), the worker queues a match run with the active weights (Section 10.6) and records the crawl as `after_crawl` in the run's `params`. A job fetched again unchanged does not count. A cancelled crawl never queues a run. Nothing is queued when `AUTO_REMATCH` is `false`, when there are no candidates, or when a match run is already queued (it loads every job when it starts). Manual and automatic requests take the same database lock, so they are decided one at a time. If the broker is down, the new match run is marked `failed`; the crawl's status never changes. Resume uploads do not queue a run.
 
 The algorithm is described in Section 10.
 
@@ -1057,7 +1059,7 @@ In the 5-candidate hand check (README), this put two jobs where the data analyst
 
 ### 10.6 Score Normalization
 
-Each component is already normalized to [0, 1] before weighting, so no further rescaling is needed. **[Decision]** Weights are read from configuration as `{required: 70, nice: 15, experience: 10, location: 5}`. When the **Could** feature "adjustable weights" is added, user-supplied weights will be rescaled to sum to 100 so that the score remains on a 0–100 scale.
+Each component is already normalized to [0, 1] before weighting, so no further rescaling is needed. **[Decision]** The default weights are read from configuration (`MATCH_WEIGHTS`) as `{required: 70, nice: 15, experience: 10, location: 5}`. The **Could** feature "adjustable weights" is implemented (22 November 2026): a match run can be started with its own weights, four whole numbers from 0 to 100 that must add up to exactly 100. Weights that break this rule are refused (422), never rescaled, so the score stays on a 0–100 scale. Each run records the weights it used in its `params`. A run started without weights uses the active weights: those of the most recently created queued, running or completed run that recorded them, otherwise the defaults. **[Decision]**
 
 ### 10.7 Ranking and the Top 10
 
@@ -1127,7 +1129,7 @@ Findings:
 
 1. **Vectorized scoring.** Candidate skills and job skills become sparse 0/1 matrices. One matrix product gives the matched required and nice-to-have counts for every pair, and the experience and location factors are computed for whole arrays at once. The formula and the edge-case rules stay the same. Because this version works in floating point, its rankings must first be checked against the exact per-pair version on test data, so that equal scores still reach the tie-breaker.
 2. **Top-10-only storage.** Only each candidate's and each job's top 10 matches are stored, and any other pair is computed on demand with the same scoring function. Match pages are unaffected; an export of all matches would compute its rows on demand.
-3. **Incremental recompute** for new jobs or candidates only (the Could feature "re-matching when new jobs arrive").
+3. **Incremental recompute** for new jobs or candidates only. Automatic re-matching after a crawl (Section 8.9) runs a full recompute; an incremental run would make it cheaper.
 
 Approximate nearest-neighbour or embedding search is not on this path. It would make the top 10 approximate and the score harder to explain.
 
@@ -1421,7 +1423,8 @@ The example is a resume upload in which no file was accepted, so the whole reque
 |---|---|---|---|
 | Create crawl job | POST | `/background-jobs/crawl` | Must |
 | Create resume parsing job (multipart, multiple files) | POST | `/background-jobs/resume` | Must |
-| Start full matching run | POST | `/background-jobs/match` | **[Decision]** supports Must |
+| Start full matching run (optional weights) | POST | `/background-jobs/match` | **[Decision]** supports Must |
+| Scoring weights: default, active and those of the current results | GET | `/matching/weights` | **[Decision]** supports Could (adjustable weights) |
 | List background jobs (filters: type, status) | GET | `/background-jobs` | Must |
 | Get one background job (status, progress) | GET | `/background-jobs/{id}` | Must |
 | Cancel a background job | POST | `/background-jobs/{id}/cancel` | Must |
@@ -1870,6 +1873,7 @@ All configuration is read from environment variables, loaded with pydantic-setti
 | `CRAWLER_USER_AGENT`, `CRAWLER_DEFAULT_DELAY_SECONDS`, `CRAWLER_MAX_RETRIES`, `CRAWLER_MAX_PAGES_LIMIT`, `CRAWLER_PRIVATE_HOST_ALLOWLIST` | Crawler behavior |
 | `OCR_ENABLED`, `OCR_LANGUAGE`, `OCR_MIN_TEXT_CHARS` (25), `OCR_TIMEOUT_SECONDS` (60) | OCR behavior: on/off, language, scanned-page threshold, time limit per page |
 | `MATCH_WEIGHTS` (70,15,10,5) | Scoring weights |
+| `AUTO_REMATCH` (true) | Queue a match run after a crawl that saved new or changed jobs (Section 8.9) |
 | `JOB_HEARTBEAT_TIMEOUT_SECONDS` (600), `JOB_QUEUED_TIMEOUT_SECONDS` (600) | Stale-job detection (Section 13.7) |
 
 ### 16.4 Persistent Storage
@@ -1979,15 +1983,15 @@ The **5-candidate hand check** in the README complements automated tests. It con
 
 ## 19. Future Enhancements
 
-Only the **Could** features from the brief are listed. None is part of the baseline design.
+Only the **Could** features from the brief are listed. None is part of the baseline design; those marked **Implemented** were added after it.
 
 | Could feature | How the baseline prepares for it |
 |---|---|
-| Adjustable scoring weights in the UI | Weights already live in configuration and in `score_breakdown`. Add a weights form that triggers a match recompute with normalized weights. |
-| Semantic matching with embeddings | The matching engine is isolated. An embedding similarity could be added as a separate, explained component. Explainability rules still apply: matched and missing skills stay visible. |
-| Re-matching when new jobs arrive | The `match` task exists. Trigger it, or an incremental variant for new jobs only, when a crawl completes. |
-| Resuming a stopped crawl | Would require persisting the frontier and visited set (for example in a table keyed by `background_job_id`) and restarting from them. |
-| CI pipeline | Tests are already offline and containerized. A CI workflow could run linting and Pytest on every push. |
+| Adjustable scoring weights in the UI | **Implemented** (22 November 2026). The Recompute dialog has a weights form (whole numbers that add up to exactly 100, never rescaled; "Reset to defaults"); each run records its weights, and `GET /matching/weights` shows the default, active and current-results weights (Section 10.6). |
+| Semantic matching with embeddings | **Deferred** (not part of this version). The matching engine is isolated. An embedding similarity could be added as a separate, explained component. Explainability rules still apply: matched and missing skills stay visible. |
+| Re-matching when new jobs arrive | **Implemented** (22 November 2026). A crawl that ends `completed`, or `failed` after saving jobs, and saved new jobs or changed what matching reads, queues a full match run with the active weights (`AUTO_REMATCH`, on by default; never after a cancelled crawl; Section 8.9). An incremental variant for new jobs only remains part of the scale path (Section 10.10). |
+| Resuming a stopped crawl | **Deferred** (not part of this version). It would require persisting the frontier and visited set (for example in a table keyed by `background_job_id`) and restarting from them. |
+| CI pipeline | **Implemented** (22 November 2026): `.github/workflows/ci.yml` runs on every push and pull request to `main`. The backend job installs the backend with its worker and test dependencies and Tesseract, starts a throwaway PostgreSQL service whose only database is `matching_test`, confirms `current_database()` and runs the whole Pytest suite; it fails if any test is skipped. The frontend job runs `npm ci` and `npm run build` (TypeScript check and production build). No linter is configured, so none runs. |
 
 ## 20. Assumptions and Design Decisions
 
@@ -2112,7 +2116,7 @@ Every Must requirement in the brief maps to a component in this design, the Shou
 | Baseline scoring formula (70 / 15 / 10 / 5) | 10.1 | Implemented unchanged | Baseline |
 | Score must stay explainable; always show matched and missing skills | 10.2, 10.8 | Breakdown + explanation | Must |
 | Hand-check 5 candidates' top 3 jobs in README | 4.5, 18 | Deliverable | Deliverable |
-| Extras: adjustable weights, embeddings, re-matching, resume crawl, CI | 19 | Future enhancements only | Could |
+| Extras: adjustable weights, embeddings, re-matching, resume crawl, CI | 8.9, 10.6, 19 | Adjustable weights, re-matching and CI implemented; embeddings and crawl resumption deferred | Could |
 | `docker compose up` starts API, worker, database, UI, mock site; `.env.example` | 16 | Compose services, health checks | Deliverable |
 | README contents | 4.5 | Content sources identified | Deliverable |
 | `DATA_SOURCES.md` | 4.5, 4.6 | Robots check logged by crawler | Deliverable |

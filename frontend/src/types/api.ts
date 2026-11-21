@@ -298,3 +298,22 @@ export interface JobMatches {
   computed_at: string | null
   items: CandidateMatch[]
 }
+
+// --- Scoring weights (GET /matching/weights, LLD §7.4) ----------------------------------------------
+
+/** Weights of the four score components; they add up to 100. */
+export interface MatchWeights {
+  required: number
+  nice: number
+  experience: number
+  location: number
+}
+
+export interface MatchWeightsInfo {
+  /** MATCH_WEIGHTS: 70, 15, 10, 5 unless the server is configured otherwise. */
+  default: MatchWeights
+  /** What a run started without weights uses: the latest queued, running or completed run's, else the default. */
+  active: { weights: MatchWeights; source: 'match_run' | 'default'; background_job_id: string | null }
+  /** The run whose results are stored; weights null when it is from before weights were recorded. */
+  results: { background_job_id: string; weights: MatchWeights | null } | null
+}

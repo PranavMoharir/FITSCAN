@@ -12,12 +12,12 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 
 ## Status
 
-**Phases 1–7 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, and the public landing page. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
+**Phases 1–7 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, the public landing page and the application UI, plus three optional features: adjustable scoring weights, automatic re-matching after crawls and a CI pipeline. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
 
-| Works now | Not built yet (later phases) |
+| Works now | Not built yet |
 |---|---|
-| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | Application UI pages (background jobs, jobs, candidates, upload form, detail pages) |
-| The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | `samples/`, `DATA_SOURCES.md`, `AI_USAGE.md` |
+| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | `samples/`, `DATA_SOURCES.md`, `AI_USAGE.md` |
+| The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | Deferred optional features: resuming an interrupted crawl, and embedding-based (semantic) matching |
 | Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | |
 | Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | |
 | Extractors: Fake Python Jobs, the mock site (static and JavaScript), generic JSON-LD | |
@@ -26,6 +26,9 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 | PDF parsing: one- and two-column layouts, tables, garbled text, OCR of scanned pages (Tesseract) | |
 | Candidate fields, skills, validation, de-duplication (same file skipped, same email updated) | |
 | Matching: every candidate against every job, exact scores, explanations, TF-IDF tie-breaker; top 10 in both directions | |
+| Adjustable scoring weights: each match run takes optional whole-number weights that add up to 100 and records them; `GET /matching/weights` | |
+| Automatic re-matching: a crawl that saved new jobs, or changed what matching reads from a job, queues a match run (`AUTO_REMATCH`) | |
+| Continuous integration: GitHub Actions runs every backend test (with PostgreSQL and Tesseract) and the frontend build on each push and pull request to `main` | |
 | Search and detail: `GET /jobs`, `/jobs/{id}`, `/candidates`, `/candidates/{id}`, `/skills`; filters, sorting, paging | |
 | Exports: jobs, candidates and the match table as CSV or JSON, streamed, with formula-injection protection | |
 | `GET /health`, OpenAPI docs at `/docs`, one error envelope for every error | |
@@ -111,6 +114,15 @@ After crawling jobs and uploading resumes, score every candidate against every j
 curl -X POST http://localhost:8000/background-jobs/match
 ```
 
+To use other weights (an optional feature, implemented), send them with the request: four whole numbers from 0 to 100 that add up to exactly 100 (anything else is refused with 422; nothing is rescaled):
+
+```bash
+curl -X POST http://localhost:8000/background-jobs/match -H "Content-Type: application/json" \
+  -d '{"weights": {"required": 60, "nice": 20, "experience": 10, "location": 10}}'
+```
+
+A run records its weights in `params.weights`. A run started without weights uses the active weights: the latest chosen ones, or `MATCH_WEIGHTS` (70, 15, 10, 5) if none were chosen. `GET /matching/weights` shows the default, active and current-results weights; in the UI, the Recompute dialog has the same form with "Reset to defaults".
+
 The answer is `202 Accepted` with the `match` job; follow it like a crawl (one progress item per candidate). When it completes, it has replaced all stored matches at once; until then, and if it is cancelled or fails, the previous matches stay as they were. Then:
 
 | Request | Shows |
@@ -118,7 +130,9 @@ The answer is `202 Accepted` with the `match` job; follow it like a crawl (one p
 | `GET /candidates/{id}/matches?limit=10` | A candidate's top jobs (default and maximum 10) |
 | `GET /jobs/{id}/matches?limit=10` | A job's top candidates |
 
-Each item has its `rank`, the `score` (2 decimals), `matched_skills` and `missing_skills` (each `{skill, level}`), the `breakdown` of the four components, `text_similarity` and the `explanation`. `computed_at` says when the matches were computed. Matches are not recomputed automatically: run the job again after new crawls or uploads.
+Each item has its `rank`, the `score` (2 decimals), `matched_skills` and `missing_skills` (each `{skill, level}`), the `breakdown` of the four components, `text_similarity` and the `explanation`. `computed_at` says when the matches were computed. After a crawl that saved new jobs, or changed what matching reads from a job, a match run is queued automatically (below); after uploading resumes, run the job yourself.
+
+**Automatic re-matching** (an optional feature, implemented). When a crawl ends `completed`, or `failed` after saving jobs, and it saved a new job or changed a job's skills, minimum experience, location, remote flag or description, the worker queues a match run with the active weights. Its `params.after_crawl` names the crawl, and the crawl's log says what happened. A job fetched again unchanged does not count. Nothing is queued after a cancelled crawl, when there are no candidates yet, or when a match run is already queued (it includes the new jobs). Set `AUTO_REMATCH=false` to recompute only by hand.
 
 ### Search, details and exports
 
@@ -214,7 +228,7 @@ An upload is a background job, like a crawl (LLD Part 6).
 A match run is a background job (LLD Part 7). It scores **every candidate against every job**, one pair at a time, and stores every pair in `matches`.
 
 ```text
-score = 70 × R + 15 × N + 10 × E + 5 × L          (weights: MATCH_WEIGHTS, adding up to 100)
+score = 70 × R + 15 × N + 10 × E + 5 × L          (default weights: MATCH_WEIGHTS, adding up to 100)
 ```
 
 | Component | Value between 0 and 1 |
@@ -340,7 +354,8 @@ Skill extraction is measured on hand-labelled examples (LLD §6.9): job descript
 - a full resume upload through the API with the real `resume` task: accepted and rejected files, UUID storage, progress, logs, duplicates, same-email updates, cancellation between files, OCR, a broker outage, and a check that no log line contains names, contact details, file names or resume text;
 - search and detail: every filter on its own and combined, aliases and city spellings, literal `%` and `_`, sorting with missing values last, page boundaries, the exact response fields, two queries per page and one per detail read, 404 and 422, no internal or private columns, and `/skills`;
 - exports: headers and filenames, empty exports, the same rows and order as the search, CSV quoting of commas, quotes and line breaks, formula-injection protection (CSV only), streaming in small batches, the match table against the stored matches and `/candidates/{id}/matches` (rank, score, breakdown, explanation), `top` and the candidate filters, and a check that no search, detail or export request starts a match run or changes a match;
-- a full match run through the API with the real `match` task: every pair stored with one `computed_at`, the edge cases in the database, reruns that replace every row, cancellation and failures that keep the previous matches, two runs saving at the same time, the heartbeat before the final write, no personal data in the logs, both top-10 routes (shape, limit, 404), the API order against the ranking rule on data with many ties, and the score-precision cases through PostgreSQL.
+- a full match run through the API with the real `match` task: every pair stored with one `computed_at`, the edge cases in the database, reruns that replace every row, cancellation and failures that keep the previous matches, two runs saving at the same time, the heartbeat before the final write, no personal data in the logs, both top-10 routes (shape, limit, 404), the API order against the ranking rule on data with many ties, and the score-precision cases through PostgreSQL;
+- adjustable weights and automatic re-matching: custom weights give exact scores, the active weights (failed and cancelled runs never change them), change detection for every value matching reads, the crawl trigger rules (completed, failed, cancelled, no candidates, `AUTO_REMATCH=false`), no duplicate runs under concurrent requests, a broker failure that leaves the crawl unchanged, and an older run never overwriting newer results.
 
 They are skipped unless `TEST_DATABASE_URL` is set. With the dev override running (step 1 of *Local development*):
 
@@ -350,7 +365,7 @@ cd backend
 TEST_DATABASE_URL=postgresql+psycopg://app:change-me@127.0.0.1:5433/matching_test pytest
 ```
 
-On Windows PowerShell, set the variable first: `$env:TEST_DATABASE_URL = "postgresql+psycopg://…/matching_test"`. The tests drop and recreate the schema of that database, so its name must end in `_test`; any other name is refused.
+On Windows PowerShell, set the variable first: `$env:TEST_DATABASE_URL = "postgresql+psycopg://…/matching_test"`. The tests drop and recreate the schema of that database, so it must be `matching_test`: the URL must name it and the server must confirm it before anything is dropped, otherwise the test run stops without changing anything. While tests run, `DATABASE_URL` is replaced by an offline placeholder unless it also names `matching_test`, so the application code under test cannot reach the development database.
 
 **OCR with the real Tesseract, in the worker image.** Two tests in `tests/unit/test_ocr.py` need the Tesseract program and are skipped without it. The worker image has it, as well as the worker-only libraries (PyMuPDF, pdfplumber, scikit-learn). To run all unit tests there (from the repository root; `tests/` is mounted because the image does not contain it):
 
@@ -361,12 +376,15 @@ docker compose run --rm --no-deps -v ./backend/tests:/app/tests:ro worker \
 
 The container gets every variable of `.env` from Compose. The settings tests remove all of them first, so they check the built-in defaults wherever they run.
 
+**Continuous integration.** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request to `main`. The backend job runs the whole suite (unit tests, the database integration tests against a throwaway PostgreSQL service whose only database is `matching_test`, and OCR with Tesseract) and fails if any test is skipped. The frontend job runs `npm ci` and `npm run build`. It needs no secrets.
+
 ## Configuration
 
 All settings are environment variables, documented in [`.env.example`](.env.example) and read by `backend/app/config.py` (HLD §16.3).
 
 - One `.env` in the repository root serves Docker Compose, the backend and Vite.
 - Inside Docker, `docker-compose.yml` overrides `DATABASE_URL`, `REDIS_URL` and `UPLOAD_DIR` with container values (host names `db` and `redis`).
+- `AUTO_REMATCH` (default `true`) queues a match run after a crawl that saved new or changed jobs (see "Compute matches").
 - `VITE_API_BASE_URL` and `VITE_POLL_INTERVAL_MS` are compiled into the frontend at build time. After changing them, rebuild: `docker compose up --build frontend`.
 - Host-side URLs use `127.0.0.1`, not `localhost`: on Windows, psycopg can stall trying IPv6 (`::1`) first.
 
@@ -389,6 +407,7 @@ The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates 
 ├── docker-compose.yml        # all services
 ├── docker-compose.dev.yml    # development only: publishes db and redis on 127.0.0.1
 ├── .env.example              # documented configuration, no secrets
+├── .github/workflows/ci.yml  # CI: every backend test, and the frontend build
 ├── backend/
 │   ├── Dockerfile            # targets: api, worker
 │   ├── pyproject.toml        # dependencies and pytest settings
@@ -397,7 +416,7 @@ The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates 
 │   │   ├── main.py           # FastAPI app: routers, CORS, error handlers
 │   │   ├── config.py         # settings from environment variables
 │   │   ├── errors.py         # standard error envelope
-│   │   ├── api/              # routers: health, background_jobs, jobs, candidates, skills, exports; upload_limit
+│   │   ├── api/              # routers: health, background_jobs, jobs, candidates, skills, exports, matching; upload_limit
 │   │   ├── schemas/          # Pydantic request/response models, JobRecord, CandidateRecord
 │   │   ├── db/               # engine, sessions, Base (constraint naming)
 │   │   ├── models/           # SQLAlchemy models: the eight tables of LLD Part 3

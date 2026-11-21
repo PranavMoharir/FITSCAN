@@ -1,5 +1,7 @@
 import { ArrowUpRight } from 'lucide-react'
+import { Link } from 'react-router'
 
+import { WEIGHT_PARTS, weightsOf } from '@/components/matches/WeightsEditor'
 import { Badge } from '@/components/ui/badge'
 import { formatBytes, formatNumber, plural, shortId } from '@/lib/format'
 import type { BackgroundJobDetail } from '@/types/api'
@@ -20,7 +22,41 @@ const asNumber = (v: unknown) => (typeof v === 'number' ? v : null)
 export function JobParams({ job }: { job: BackgroundJobDetail }) {
   const p = job.params ?? {}
   if (job.type === 'match') {
-    return <p className="text-sm leading-relaxed text-muted-foreground">A match run has no parameters: it scores every candidate against every job.</p>
+    const weights = weightsOf(p.weights)
+    const afterCrawl = asString(p.after_crawl)
+    // Queued by a crawl that saved new or changed jobs (automatic re-matching, LLD §7.1).
+    const trigger = afterCrawl && (
+      <p className="mb-3 text-sm text-muted-foreground">
+        Started automatically after{' '}
+        <Link to={`/background-jobs/${afterCrawl}`} className="rounded font-medium text-accent-ink underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
+          crawl #{shortId(afterCrawl)}
+        </Link>{' '}
+        saved new or changed jobs.
+      </p>
+    )
+    if (!weights) {
+      return (
+        <div>
+          {trigger}
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Weights not recorded: this run is from before match runs recorded their weights. Its stored points and explanations still show what each match received.
+          </p>
+        </div>
+      )
+    }
+    return (
+      <div>
+        {trigger}
+        <p className="text-sm text-muted-foreground">Scores every candidate against every job with these weights (they add up to 100).</p>
+        <dl className="mt-1 divide-y divide-border">
+          {WEIGHT_PARTS.map((part) => (
+            <Row key={part.key} label={`${part.label} (${part.letter})`}>
+              <span className="tabular-nums">{formatNumber(weights[part.key])}</span>
+            </Row>
+          ))}
+        </dl>
+      </div>
+    )
   }
   if (job.type === 'crawl') {
     const seed = asString(p.seed_url)

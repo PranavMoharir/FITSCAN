@@ -29,6 +29,19 @@ class MatchWeights(BaseModel):
     location: float
 
 
+def check_weight_values(values, name: str = "the weights") -> None:
+    """The rule every set of weights follows: no negative value, total exactly 100 (0-100 scores).
+
+    Used for MATCH_WEIGHTS and for weights sent with a match run (LLD §7.4). Weights are never
+    rescaled: a set that breaks the rule is refused.
+    """
+    values = tuple(values)
+    if any(v < 0 for v in values):
+        raise ValueError(f"{name} must not be negative")
+    if abs(sum(values) - 100) > 1e-9:
+        raise ValueError(f"{name} must add up to 100, so scores stay on a 0-100 scale")
+
+
 def _split_comma_list(value: object) -> object:
     """Turn "a, b,c" into ["a", "b", "c"]; an empty string becomes an empty list."""
     if isinstance(value, str):
@@ -69,6 +82,8 @@ class Settings(BaseSettings):
 
     # Matching (LLD §7.4): weights of the required, nice-to-have, experience and location components
     match_weights: Annotated[MatchWeights, NoDecode] = MatchWeights(required=70, nice=15, experience=10, location=5)
+    # Queue a match run after a crawl that saved new jobs or changed what matching reads (LLD §7.1)
+    auto_rematch: bool = True
 
     # Stale background-job detection (LLD §5.8)
     job_heartbeat_timeout_seconds: int = Field(default=600, ge=1)
@@ -101,11 +116,7 @@ class Settings(BaseSettings):
     @field_validator("match_weights")
     @classmethod
     def _check_match_weights(cls, weights: MatchWeights) -> MatchWeights:
-        values = (weights.required, weights.nice, weights.experience, weights.location)
-        if any(v < 0 for v in values):
-            raise ValueError("MATCH_WEIGHTS values must not be negative")
-        if abs(sum(values) - 100) > 1e-9:
-            raise ValueError("MATCH_WEIGHTS must add up to 100, so scores stay on a 0-100 scale")
+        check_weight_values((weights.required, weights.nice, weights.experience, weights.location), "MATCH_WEIGHTS")
         return weights
 
 

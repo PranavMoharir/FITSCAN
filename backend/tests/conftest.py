@@ -3,11 +3,29 @@
 The two connection URLs are required settings, so placeholder values are set before the
 application is imported. Nothing connects to them: creating the SQLAlchemy engine does not
 open a connection, and the health tests replace the real checks.
+
+Safety: `DATABASE_URL` is always replaced by the placeholder unless it names the test database
+(`matching_test`). A shell or container that has the development URL set can therefore never
+point the application's engine at the development database while tests run.
 """
 
 import os
 
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://test:test@localhost:5432/test")
+from sqlalchemy.engine import make_url
+
+TEST_DATABASE_NAME = "matching_test"  # the only database the integration tests may use
+PLACEHOLDER_DATABASE_URL = "postgresql+psycopg://test:test@localhost:5432/test"
+
+
+def _names_test_database(url: str | None) -> bool:
+    try:
+        return bool(url) and make_url(url).database == TEST_DATABASE_NAME
+    except Exception:  # not a valid URL: treat it as unsafe
+        return False
+
+
+if not _names_test_database(os.environ.get("DATABASE_URL")):
+    os.environ["DATABASE_URL"] = PLACEHOLDER_DATABASE_URL
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 
 import pytest  # noqa: E402

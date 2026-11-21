@@ -69,7 +69,7 @@ flowchart TD
 Code: `services/background_jobs.py`.
 
 1. Validate the request (crawl settings, or the uploaded files: Part 6).
-2. Insert the `background_jobs` row with `status = 'queued'`, `type` and `params` (crawl settings, or the stored files by upload ID and storage name, without original file names), then **commit**. Committing first guarantees that the worker can always find the row.
+2. Insert the `background_jobs` row with `status = 'queued'`, `type` and `params` (crawl settings; the stored files by upload ID and storage name, without original file names; or a match run's weights, Part 7, Section 7.4), then **commit**. Committing first guarantees that the worker can always find the row.
 3. Publish the Celery task with the single argument `background_job_id`, and store the returned `celery_task_id`.
 4. If publishing fails, set the job to `failed` ("could not be queued") and return 503.
 5. Return **202 Accepted** with the job resource. The UI starts polling (Part 8).
@@ -83,6 +83,8 @@ Code: `worker/tasks.py` holds three thin task functions. Each one:
 3. Processes **one item at a time**: one page, one file, or one candidate scored against all jobs. Each item runs inside its own `try/except`, so one bad item is logged and counted, and the loop continues.
 4. After each item, in one short transaction: updates `progress_current`, the `items_succeeded` / `items_failed` counters and `heartbeat_at`, and writes log lines. It then reads `cancel_requested`.
 5. Sets the final status and `finished_at` (Section 5.8).
+
+After a crawl has its final status, the crawl task may queue a match run (automatic re-matching, Part 7, Section 7.1). It reads the final status again first, and nothing it does changes that status.
 
 ## 5.6 Progress and Logs
 
@@ -118,7 +120,7 @@ Cancellation is **cooperative**: the worker stops itself between items, instead 
 | Worker lost (container killed, out of memory) | The job stays `running`, but its `heartbeat_at` stops changing. The stale-job check below sets it to `failed` ("worker stopped unexpectedly"). |
 | Job never picked up (Redis lost the message, or no worker is available) | The stale-job check below sets it to `failed` ("No worker picked up this job within 10 minutes. The worker may be stopped, or the task was lost. Start it again."). |
 
-Resuming a stopped crawl is a **Could** feature and is not attempted.
+Resuming a stopped crawl is a **Could** feature; it is deferred (not part of this version) and is not attempted.
 
 **Stale-job check.** Two conditional updates run together on worker start-up and whenever the API lists background jobs (HLD §13.7). Both are safe to run at any time and from several places, because they change only rows that still match their conditions.
 
@@ -289,3 +291,5 @@ Each raw job goes through the same pipeline before it is saved:
 | 5. Save | Upsert into `jobs` by `dedup_key` (`INSERT … ON CONFLICT DO UPDATE`), set `background_job_id` and `source_url`, and save the skill links in `job_skills` with their `requirement_level` |
 
 Because of the upsert, a job found again later (for example on its detail page after the listing page) updates the same row instead of creating a duplicate (Part 3, Section 3.6).
+
+**Change detection** (for automatic re-matching, Part 7, Section 7.1). Before each upsert, the stored row is read with `SELECT … FOR UPDATE`, together with its skill links; the upsert returns the values stored after it. A job counts as changed for matching when it is new, or when anything matching reads differs: the required or nice-to-have skills (or a skill's level), `min_experience_years`, `location`, `is_remote` or `description` (the text for the TF-IDF tie-breaker). A job fetched again unchanged, an empty value that keeps the stored one, or a change only to columns matching never reads (title, company, salary, dates, job type) does not count. Because of the row lock, a concurrent crawl saving the same job compares against the latest committed values.

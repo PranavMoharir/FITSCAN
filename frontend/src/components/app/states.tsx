@@ -40,9 +40,11 @@ export function describeError(error: ApiError): { title: string; message: string
   if (error.status === 503) {
     const down = ['database', 'redis', 'broker'].filter((key) => error.details?.[key] === 'down')
     const names = down.map((key) => (key === 'database' ? 'PostgreSQL' : key === 'redis' ? 'Redis' : 'the job queue'))
+    const sentence = `${names.join(' and ')} ${names.length > 1 ? 'are' : 'is'} not available right now. Try again in a moment.`
     return {
       title: 'A service is unavailable',
-      message: names.length ? `${names.join(' and ')} ${names.length > 1 ? 'are' : 'is'} not available right now. Try again in a moment.` : error.message,
+      // Capitalised, because "the job queue" can start the sentence.
+      message: names.length ? sentence[0].toUpperCase() + sentence.slice(1) : error.message,
       icon: ServerCrash,
     }
   }
