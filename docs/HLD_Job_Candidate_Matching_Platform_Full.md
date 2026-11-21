@@ -488,13 +488,16 @@ flowchart TB
 | Route | Page | Main content |
 |---|---|---|
 | `/` | Landing page | Public FITSCAN marketing page: what the platform does, an interactive product preview built on sample data (no API calls), and links into the application. Unknown paths redirect here. |
-| `/app` | Application entry | Existing entry point into the application, linked from the landing page. Shows the system status (API, PostgreSQL and Redis, from `GET /health`) until the Background jobs page exists, then leads to that page. |
+| `/app` | Dashboard | Entry point into the application, linked from the landing page. Counts of jobs, candidates and skills; background jobs by status with live progress; recent runs; the last completed run of each step; system status (API, PostgreSQL and Redis, from `GET /health`). |
 | `/background-jobs` | Background jobs | Table of background jobs with type, status badge, progress bar and timestamps. "New crawl" form (seed URL, max_depth, max_pages, allowed domains). "Upload resumes" dialog (multiple files). "Recompute matches" button. Cancel button for active jobs. |
 | `/background-jobs/:id` | Background job detail | Parameters, counters (succeeded, failed), live log viewer with level filter. |
 | `/jobs` | Jobs | Searchable, paginated table (title, company, location, job type, posted date, required skills). Export CSV/JSON. |
-| `/jobs/:id` | Job detail | Job fields and a list of the top 10 candidates, each with score, matched skills (green badges), missing skills (red badges) and explanation. |
+| `/jobs/:id` | Job detail | Job fields and a list of the top 10 candidates, each with score, matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level, and explanation. |
 | `/candidates` | Candidates | Searchable, paginated table (name, current title, city, years of experience, skills, OCR flag). Export CSV/JSON. "Export match table" (CSV/JSON): the top 10 jobs of the candidates matching the current filters (Section 12.6). |
 | `/candidates/:id` | Candidate detail | Candidate fields and a list of the top 10 jobs, with the same match presentation. |
+| `/matching` | Matching | Scoring formula, latest match run (live while it runs), "Recompute matches", and a search to open any candidate's or job's top matches. |
+| `/skills` | Skills | Canonical skills from `GET /skills` by category, each linking to Jobs and Candidates filtered by that skill. |
+| `/exports` | Exports | Full CSV/JSON downloads of jobs, candidates and the match table (jobs per candidate selectable); filtered exports stay on Jobs and Candidates. |
 
 **Live progress [Decision].** While at least one background job is queued or running, the UI polls `GET /background-jobs` and the open job's `GET /background-jobs/{id}/logs?after_id=…` every 2 seconds (configurable at build time with `VITE_POLL_INTERVAL_MS`, default 2000; a setting, not a performance target). It stops polling when all visible jobs are finished. The incremental `after_id` parameter means each poll returns only new log lines. Polling was chosen over WebSockets or Server-Sent Events because it needs no extra infrastructure and is simple to explain and test (ADR-007).
 

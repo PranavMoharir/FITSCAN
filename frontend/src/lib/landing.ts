@@ -16,12 +16,12 @@ import {
   Workflow,
 } from 'lucide-react'
 
-import { API_BASE_URL } from '@/api/client'
+import { API_BASE_URL, API_DOCS_URL } from '@/api/client'
 
-/** The application entry. Today this is the system status page; later the Background jobs page. */
+/** The application entry: the dashboard. */
 export const APP_PATH = '/app'
 /** FastAPI's interactive API reference and the raw OpenAPI document. */
-export const API_DOCS_URL = `${API_BASE_URL}/docs`
+export { API_DOCS_URL }
 export const OPENAPI_URL = `${API_BASE_URL}/openapi.json`
 
 /** Section ids, used by the navigation, the footer and the sections themselves. */

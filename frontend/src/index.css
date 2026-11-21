@@ -50,39 +50,55 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* The default theme is FITSCAN's cream surface (the same values as .surface-cream below), so the
+   application pages and everything rendered in a portal (dialogs, menus, tooltips, toasts) use the
+   brand palette. Regions switch palette with the .surface-* classes. */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    color-scheme: light;
+    --background: #f8f1e7;          /* Soft Cream */
+    --foreground: #0b0b0b;          /* Deep Black */
+    --card: #fdf9f3;
+    --card-foreground: #0b0b0b;
+    --popover: #fdf9f3;
+    --popover-foreground: #0b0b0b;
+    --primary: #5b0f18;             /* Burgundy Wine */
+    --primary-foreground: #f8f1e7;
+    --primary-hover: #74202b;
+    --secondary: #efe5d7;
+    --secondary-foreground: #0b0b0b;
+    --muted: #efe5d7;
+    --muted-foreground: #4a433d;
+    --subtle-foreground: #6b625a;
+    --accent: #efe5d7;
+    --accent-foreground: #0b0b0b;
+    --accent-ink: #5b0f18;
+    --accent-solid: #5b0f18;
+    --destructive: #8a1c26;
+    --border: rgb(11 11 11 / 0.1);
+    --input: rgb(11 11 11 / 0.16);
+    --ring: #5b0f18;
+    --track: rgb(11 11 11 / 0.08);
+    --viz-1: #5b0f18;
+    --viz-2: #9c4a52;
+    --viz-3: #c9a19a;
+    --viz-4: #8e857c;
+    --mark-a: #0b0b0b;
+    --mark-b: #5b0f18;
+    --mark-fill: #5b0f18;
+    --chart-1: #5b0f18;
+    --chart-2: #9c4a52;
+    --chart-3: #c9a19a;
+    --chart-4: #8e857c;
+    --chart-5: #4a433d;
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --sidebar: #0b0b0b;
+    --sidebar-foreground: #f8f1e7;
+    --sidebar-primary: #e6c3bb;
+    --sidebar-primary-foreground: #0b0b0b;
+    --sidebar-accent: #1f1c1a;
+    --sidebar-accent-foreground: #f8f1e7;
+    --sidebar-border: rgb(248 241 231 / 0.12);
+    --sidebar-ring: #e6c3bb;
 }
 
 .dark {
@@ -137,7 +153,8 @@
  * (text, borders, cards, buttons, charts and the logo), so content inside it stays readable
  * without per-element colours. shadcn/ui components read the same tokens.
  * In the base layer, so utility classes (for example a dialog overlay's colour) still win.
- * The application pages keep the light theme defined above.
+ * The application pages use the same palette: :root above is the cream surface, and the
+ * application's sidebar is .surface-ink.
  * ------------------------------------------------------------------------------------------ */
 @layer base {
 .landing,
@@ -333,5 +350,19 @@ body:has(.landing) {
     .landing *::after {
         animation: none !important;
         transition-duration: 0.01ms !important;
+    }
+}
+
+/* ---- Application ("/app" and the pages beside it) ----------------------------------------- */
+
+/* With "reduce motion" on, nothing in the application moves: no pulses, shimmers, slides or
+   eased bars. Portals (dialogs, menus, toasts) render outside the shell, hence body:has(). */
+@media (prefers-reduced-motion: reduce) {
+    body:has(.app-shell) *,
+    body:has(.app-shell) *::before,
+    body:has(.app-shell) *::after {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }

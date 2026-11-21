@@ -127,7 +127,7 @@ Why this matters:
 
 This template, with the points for each component, comes from HLD §10.8. Since HLD v1.2, the API example in HLD §12.5 uses the same sentence (Section 1.7, H2).
 
-The UI shows matched skills as green badges and missing skills as red badges (Part 8).
+The UI shows matched skills as tinted badges with a check and missing skills as dashed badges with a minus, each with its level (Part 8).
 
 ## 7.8 TF-IDF Tie-Breaker
 

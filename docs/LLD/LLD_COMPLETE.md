@@ -1508,7 +1508,7 @@ Why this matters:
 
 This template, with the points for each component, comes from HLD §10.8. Since HLD v1.2, the API example in HLD §12.5 uses the same sentence (Section 1.7, H2).
 
-The UI shows matched skills as green badges and missing skills as red badges (Part 8).
+The UI shows matched skills as tinted badges with a check and missing skills as dashed badges with a minus, each with its level (Part 8).
 
 ### 7.8 TF-IDF Tie-Breaker
 
@@ -1625,20 +1625,23 @@ Each page is one component in `src/pages/`:
 | Route | Page | What it shows and does |
 |---|---|---|
 | `/` | Landing page | The public FITSCAN marketing page: what the platform does, an interactive product preview built on sample data (no API calls), and links into the application. Unknown paths redirect here. |
-| `/app` | Application entry | The existing entry point into the FITSCAN application, linked from the landing page. Today it shows the system status (API, PostgreSQL and Redis, from `GET /health`); it will lead to the Background jobs page once that page exists. |
+| `/app` | Dashboard | The entry point into the FITSCAN application, linked from the landing page. Counts of jobs, candidates and skills; background jobs by status with live progress; recent runs; the last completed run of each step; system status (API, PostgreSQL and Redis, from `GET /health`). |
 | `/background-jobs` | Background jobs | Table of background jobs: type, status badge, progress bar, timestamps. "New crawl" form (seed URL, `max_depth`, `max_pages`, allowed domains). "Upload resumes" dialog (several files at once). "Recompute matches" button. Cancel button on active jobs. |
 | `/background-jobs/:id` | Background job detail | The job's parameters, succeeded and failed counters, failure reason if any, and a live log viewer with a level filter |
 | `/jobs` | Jobs | Searchable, paginated table: title, company, location, job type, posted date, required skills. Export CSV / JSON buttons. |
-| `/jobs/:id` | Job detail | Job fields, then the top 10 candidates. Each shows the score, matched skills (green badges), missing skills (red badges) and the explanation. |
+| `/jobs/:id` | Job detail | Job fields, then the top 10 candidates. Each shows the score, matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level, and the explanation. |
 | `/candidates` | Candidates | Searchable, paginated table: name, current title, city, years of experience, skills, OCR flag. Export CSV / JSON buttons for the candidates, plus "Export match table" (CSV / JSON) for the same candidates' top 10 jobs. |
 | `/candidates/:id` | Candidate detail | Candidate fields, any parse warnings, then the top 10 jobs, presented the same way as on the job detail page |
+| `/matching` | Matching | Scoring formula, latest match run (live while it runs), "Recompute matches", and a search to open any candidate's or job's top matches. |
+| `/skills` | Skills | Canonical skills from `GET /skills` by category, each linking to Jobs and Candidates filtered by that skill. |
+| `/exports` | Exports | Full CSV/JSON downloads of jobs, candidates and the match table (jobs per candidate selectable); filtered exports stay on Jobs and Candidates. |
 
 ### 8.3 Components
 
 | Kind | Components | Location |
 |---|---|---|
 | shadcn/ui building blocks | Table, Badge, Progress, Dialog, Input, Button, Tabs, Card, Toast | `src/components/ui/` |
-| Shared app components | Skill badges (green for matched, red for missing, with the level), job progress bar, log viewer | `src/components/` |
+| Shared app components | Skill badges (matched: tinted, with a check; missing: dashed, with a minus; each with the level), job progress bar, log viewer | `src/components/` |
 | Data hooks | Polling hook for job status and logs; data-loading hooks for lists and detail pages | `src/hooks/` |
 | Types | TypeScript interfaces that mirror the API's Pydantic schemas | `src/types/` |
 
@@ -1693,7 +1696,7 @@ Polling stops when every visible job is `completed`, `failed` or `cancelled`. Po
 | Compute matches | "Recompute matches" → watch the `match` job finish → detail pages show the new results and time |
 | Cancel | Click Cancel on a queued or running job → it becomes `cancelled`, immediately or after the current item |
 | Browse and search | Jobs or Candidates page → type a search term or a skill (for example "js", which finds JavaScript) → page through results |
-| Review matches | Click a candidate → see their top 10 jobs; click a job → see its top 10 candidates, with green and red skill badges |
+| Review matches | Click a candidate → see their top 10 jobs; click a job → see its top 10 candidates, with matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level |
 | Export | Click Export CSV or JSON on the Jobs or Candidates table → the browser downloads the file with the same filters as the table. On the Candidates page, "Export match table" downloads those candidates' top 10 jobs. |
 
 ---
@@ -1885,6 +1888,6 @@ Flows 1–3 are background jobs: the API answers at once with **202 Accepted**, 
 | 3 | User | Opens a candidate (or a job) | Section 8.2 |
 | 4 | React → `GET /candidates/{id}/matches` | `services/matches.py` reads the top 10 ordered by full-precision score, then text similarity, required ratio and ID | Section 7.10 |
 | 5 | API | Assigns `rank` 1–10, then rounds the scores to 2 decimals for the response | Section 7.10 |
-| 6 | React | Shows each match with its score, green matched and red missing skill badges, and the explanation, in the API's order | Section 8.6 |
+| 6 | React | Shows each match with its score, matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level, and the explanation, in the API's order | Section 8.6 |
 | 7 | User | Clicks Export CSV or JSON on a table, or "Export match table" on the Candidates page | Section 8.4 |
 | 8 | `services/export.py` | Reuses the search filters and streams the file as a download (CSV cells protected against formula injection) | Section 4.6 |

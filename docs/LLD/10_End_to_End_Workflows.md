@@ -69,6 +69,6 @@ Flows 1–3 are background jobs: the API answers at once with **202 Accepted**, 
 | 3 | User | Opens a candidate (or a job) | Section 8.2 |
 | 4 | React → `GET /candidates/{id}/matches` | `services/matches.py` reads the top 10 ordered by full-precision score, then text similarity, required ratio and ID | Section 7.10 |
 | 5 | API | Assigns `rank` 1–10, then rounds the scores to 2 decimals for the response | Section 7.10 |
-| 6 | React | Shows each match with its score, green matched and red missing skill badges, and the explanation, in the API's order | Section 8.6 |
+| 6 | React | Shows each match with its score, matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level, and the explanation, in the API's order | Section 8.6 |
 | 7 | User | Clicks Export CSV or JSON on a table, or "Export match table" on the Candidates page | Section 8.4 |
 | 8 | `services/export.py` | Reuses the search filters and streams the file as a download (CSV cells protected against formula injection) | Section 4.6 |

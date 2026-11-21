@@ -29,7 +29,7 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 | Search and detail: `GET /jobs`, `/jobs/{id}`, `/candidates`, `/candidates/{id}`, `/skills`; filters, sorting, paging | |
 | Exports: jobs, candidates and the match table as CSV or JSON, streamed, with formula-injection protection | |
 | `GET /health`, OpenAPI docs at `/docs`, one error envelope for every error | |
-| Frontend: public landing page at `/` (sample data only, no API calls) and the application entry at `/app` (system status) | |
+| Frontend: public landing page at `/` (sample data only, no API calls) and the application at `/app` (dashboard, background jobs, jobs, candidates, matching, skills, exports) | |
 
 The sections the brief asks for that are not here yet (known limitations, time spent) are added as the remaining features are built.
 
@@ -44,7 +44,7 @@ docker compose up --build
 
 | URL | What it is |
 |---|---|
-| http://localhost:5173 | Web UI: the FITSCAN landing page; the application entry (system status for now) is at `/app` |
+| http://localhost:5173 | Web UI: the FITSCAN landing page; the application starts at `/app` |
 | http://localhost:8000/docs | Interactive API documentation |
 | http://localhost:8000/health | Health check: `{"status": "ok", "database": "ok", "redis": "ok"}` |
 
@@ -416,12 +416,12 @@ The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates 
 │   ├── package.json, vite.config.ts, tsconfig*.json, components.json
 │   └── src/
 │       ├── api/client.ts     # typed API client
-│       ├── App.tsx           # routes: / landing page, /app application entry
-│       ├── components/ui/    # shadcn/ui components (button, card, badge)
+│       ├── App.tsx           # routes: / landing page, /app dashboard and the application pages
+│       ├── components/ui/    # shadcn/ui components (badge, button, card, dialog, input, label, progress, select, sheet, skeleton, table, toast, tooltip)
 │       ├── components/sections/, components/landing/  # landing page sections and their parts
 │       ├── lib/utils.ts      # shadcn/ui helper
 │       ├── pages/LandingPage.tsx # marketing landing page (/), sample data only
-│       ├── pages/HomePage.tsx # application entry (/app): system status for now
+│       ├── pages/DashboardPage.tsx, …  # application pages: /app dashboard, background jobs, jobs and candidates (each with a detail page), matching, skills, exports
 │       ├── hooks/  types/
 │       └── main.tsx
 └── docs/                     # HLD, LLD, ADRs, diagrams
