@@ -94,7 +94,52 @@ Two public boards were crawled once each into the running stack, after a databas
 | Greenhouse: Code for America | `https://boards-api.greenhouse.io/v1/boards/codeforamerica/jobs?content=true` | 10 of 10 jobs saved, company "Code for America", every job linked to its `job-boards.greenhouse.io` posting |
 | Lever: Spotify | `https://api.lever.co/v0/postings/spotify?mode=json&limit=10` | 10 jobs saved (capped with `limit=10`), every job linked to its `jobs.lever.co` posting; company empty, as Lever does not publish it |
 
-Both hosts' robots.txt allowed the requests. All 20 jobs are labelled real and the 108 earlier jobs (Fake Python Jobs) stay demo. The 20 got industries such as Software & IT, AI & Data Science, Marketing, Sales & Business and Finance & Banking; a few ("Engineering Manager", "Program Director") stay Other / Unclassified because the evidence is weak or tied. With `AUTO_REMATCH=false`, each crawl's log says no match run was queued; the new jobs get matches at the next manual recompute.
+Both hosts' robots.txt allowed the requests. All 20 jobs are labelled real and the 108 earlier jobs (100 from Fake Python Jobs, 8 from the mock site) stay demo. The 20 got industries such as Software & IT, AI & Data Science, Marketing, Sales & Business and Finance & Banking; a few ("Engineering Manager", "Program Director") stay Other / Unclassified because the evidence is weak or tied. With `AUTO_REMATCH=false`, each crawl's log says no match run was queued; the new jobs get matches at the next manual recompute.
+
+## Why these sources, and how they were checked
+
+### Why these sources
+
+- **Greenhouse and Lever job boards.** Many companies publish their openings through these two hiring systems,
+  and each offers a public JSON API for job boards that needs no login or key. One request returns a board's open
+  jobs with title, location, description and a link to the original posting, so a crawl is a single request and
+  nothing has to be scraped from rendered pages.
+- **Company career pages.** Many employers add schema.org `JobPosting` data to their own career pages so that
+  search engines can list the jobs. One generic extractor reads that data from any such page, so an employer's
+  own site can be crawled without writing a new extractor.
+- **Demo sources (Fake Python Jobs and the mock site).** The brief suggests Fake Python Jobs as a starting point,
+  and the site was made for practising scraping. The mock site runs inside Docker Compose and covers what a real
+  site might not: a page that needs JavaScript (rendered with headless Chromium), a robots.txt with a disallowed
+  path, and pages that never change, so demos and tests are repeatable and need no internet. Their jobs are
+  invented and always labelled demo.
+
+### How robots.txt was checked
+
+robots.txt is not checked by hand. Before the first page of every crawl, the crawler reads the host's robots.txt,
+then obeys it (`Disallow` and `Crawl-delay`) and writes the result to the crawl's log. The stored crawl logs show:
+
+| Host | Crawls | robots.txt result |
+|---|---|---|
+| `mock-site:8080` | 14 (18–19 November) | Loaded every time; `/private/internal.html` (under `Disallow: /private/`) was skipped as "disallowed by robots.txt" in 12 crawls and never fetched |
+| `realpython.github.io` | 2 (18 and 19 November) | Loaded; no page refused |
+| `boards-api.greenhouse.io` | 1 (22 November) | Loaded; no page refused (that day the file disallowed only `/embed/`; see the rules below) |
+| `api.lever.co` | 1 (22 November) | Loaded, with a crawl delay of 1 second; no page refused |
+| `www.shopify.com` | 1 (22 November) | Loaded; no page refused |
+
+### What was tested live, and what only offline
+
+| Source | Live crawls (from the stored crawl logs) | Jobs in the database | Offline tests (saved files) |
+|---|---|---|---|
+| Fake Python Jobs | 18 November (6 pages) and 19 November (101 pages: the listing and every job page) | 100, demo | Listing and job pages |
+| Mock site | 14 crawls of its static and JavaScript pages, 18–19 November, inside Docker | 8, demo (5 static, 3 JavaScript) | Static pages, the JavaScript page before and after rendering, robots.txt |
+| Greenhouse | Code for America board, 22 November, 1 request | 10, real | A board response with invented companies |
+| Lever | Spotify board with `limit=10`, 22 November, 1 request | 10, real | A postings response with invented companies |
+| Company career page (`generic`) | `https://www.shopify.com/careers`, 22 November: 10 pages fetched, **no job extracted** | 0 | A career page with invented `JobPosting` data |
+
+So the `generic` extractor has read jobs only from the saved test page. In the one live attempt, the pages fetched
+included two job pages, but no job was extracted from any page, and the log does not say why. That crawl also left
+the careers section (it fetched catalog, news and editions pages), because a crawl's allowed domain is a whole host.
+Sources FITSCAN does not support, and its other limits, are listed under [Limitations](#limitations).
 
 ## Rules every crawl follows
 
@@ -118,6 +163,11 @@ Both hosts' robots.txt allowed the requests. All 20 jobs are labelled real and t
   block automated access or forbid crawling in their terms.
 - **Career pages without JobPosting data** (or that build their list with JavaScript and publish no
   structured data) give no jobs through `generic`; such a site needs its own extractor.
+- **Career pages are verified only offline.** `generic` has not collected a real job yet: the only live attempt
+  (Shopify careers, 22 November 2026) fetched 10 pages and extracted no job.
+- **Allowed domains are whole hosts.** A crawl seeded at a careers page can follow links to other pages of the
+  same host and use up `max_pages` there, as the Shopify crawl did. Keep `max_pages` small, or seed a host that
+  serves only jobs (such as a job-board API).
 - **Lever** postings do not name the company. Greenhouse publishes no salary fields.
 - **One response per board.** FITSCAN reads the first API response. Greenhouse lists every open job in
   it; Lever also offers paging (`skip`, `limit`), which FITSCAN does not use, so a very large Lever board
@@ -129,6 +179,10 @@ Both hosts' robots.txt allowed the requests. All 20 jobs are labelled real and t
 Resumes are PDFs uploaded by the user. The tests and demos use synthetic resumes made by
 `backend/tests/resume_pdfs.py` (invented people, one- and two-column layouts, a skills table and a
 scanned page). No real resume is stored in the repository; uploaded files stay in the `uploads` volume.
+
+Synthetic resumes were chosen so that the tests, the demos and [`samples/`](samples/) hold no personal data and
+cover the layouts the brief asks for. Resumes uploaded to a running FITSCAN stay in its `uploads` volume and
+database; none is in the repository or in `samples/`.
 
 ## Adding a source
 

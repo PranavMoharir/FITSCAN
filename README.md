@@ -2,7 +2,7 @@
 
 A platform that collects job openings by crawling, reads candidate resumes from PDFs, and matches each candidate to the jobs that fit best (and each job to its best candidates). Crawling, parsing and matching run as background jobs; users watch progress, browse results and export CSV or JSON.
 
-The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Matching_Platform_Full.md), the [LLD](docs/LLD/README.md) and the [architecture decisions](docs/ARCHITECTURE_DECISIONS.md). Data sources: [`DATA_SOURCES.md`](DATA_SOURCES.md). How AI was used: [`AI_USAGE.md`](AI_USAGE.md). Demo video plan: [`docs/DEMO_VIDEO_SCRIPT.md`](docs/DEMO_VIDEO_SCRIPT.md).
+The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Matching_Platform_Full.md), the [LLD](docs/LLD/README.md) and the [architecture decisions](docs/ARCHITECTURE_DECISIONS.md). Data sources: [`DATA_SOURCES.md`](DATA_SOURCES.md). How AI was used: [`AI_USAGE.md`](AI_USAGE.md). Sample outputs (synthetic data only): [`samples/`](samples/). Demo video plan: [`docs/DEMO_VIDEO_SCRIPT.md`](docs/DEMO_VIDEO_SCRIPT.md).
 
 **Stack:**
 - Backend: Python 3.12, FastAPI, Pydantic, SQLAlchemy 2 and Alembic on PostgreSQL 17; Celery workers with Redis as the broker.
@@ -14,11 +14,11 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 
 **Phases 1–8 done (final):** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, the public landing page and the application UI, plus three optional features: adjustable scoring weights, automatic re-matching after crawls and a CI pipeline, and real job sources across industries next to the demo sites. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
 
-| Works now | Not built yet |
+| Works now | Not done |
 |---|---|
-| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site; every service has a health check | `samples/` (sample exports) |
+| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site; every service has a health check | Demo video: not recorded yet (plan: [`docs/DEMO_VIDEO_SCRIPT.md`](docs/DEMO_VIDEO_SCRIPT.md)) |
 | The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | Deferred optional features: resuming an interrupted crawl, and embedding-based (semantic) matching |
-| Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | |
+| Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | User accounts and authentication (out of scope; see [Security controls](#security-controls)) |
 | Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | |
 | Extractors: Fake Python Jobs, the mock site (static and JavaScript), generic JSON-LD | |
 | Real job sources: company career pages (schema.org `JobPosting`), Greenhouse and Lever job boards (public APIs); demo sites stay and are always labelled demo ([`DATA_SOURCES.md`](DATA_SOURCES.md)) | |
@@ -36,12 +36,13 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 | Exports: jobs, candidates and the match table as CSV or JSON, streamed, with formula-injection protection | |
 | `GET /health`, OpenAPI docs at `/docs`, one error envelope for every error | |
 | Frontend: public landing page at `/` (sample data only, no API calls) and the application at `/app` (dashboard, background jobs, jobs, candidates, matching, skills, exports) | |
+| Sample outputs in [`samples/`](samples/): the demo jobs, the 5 synthetic candidates and their top-10 match table, as CSV and JSON | |
 
-The sections the brief asks for that are not here yet (known limitations, time spent) are added as the remaining features are built.
+Also in this README: [architecture and design decisions](#architecture-and-design-decisions), [how matching works](#how-matching-works), the [hand check of 5 candidates](#matching-hand-check-5-candidates), [known limitations](#known-limitations) and [time spent](#time-spent).
 
 ## Quick start (Docker)
 
-Requires Docker Desktop (or Docker Engine with Compose v2).
+Requires Docker Desktop (or Docker Engine with Compose v2). Get the code with `git clone https://github.com/PranavMoharir/FITSCAN.git` (the repository is private, so GitHub asks for an account that has been given access). Then, in the `FITSCAN` folder, setup is two commands:
 
 ```bash
 cp .env.example .env
@@ -57,6 +58,8 @@ docker compose up --build
 `.env.example` works as it is for local use. Change `POSTGRES_PASSWORD` (and the same password in `DATABASE_URL`) if the machine is shared.
 
 Stop with `Ctrl+C`, or `docker compose down`. Data is kept in Docker volumes; `docker compose down -v` deletes it. The first build takes several minutes, because the worker image downloads headless Chromium.
+
+A new installation starts with an empty database. To see matches, crawl jobs, upload resumes and compute matches, in that order: in the UI with **New crawl**, **Upload resumes** and **Recompute matches**, or with the requests in the next sections. To see example results without running anything, open [`samples/`](samples/).
 
 ### Start a crawl
 
@@ -181,7 +184,7 @@ curl -OJ "http://localhost:8000/exports/matches?format=csv&top=10"          # th
 
     | Export | Required | Filters | `sort` | `order` | Other |
     |---|---|---|---|---|---|
-    | `/exports/jobs` | `format` = `csv` or `json` | `q`, `skill`, `location`, `job_type`, `max_required_years` | `posted_date` (default) or `title` | `asc` or `desc`; default `desc` for `posted_date`, `asc` for `title` | |
+    | `/exports/jobs` | `format` = `csv` or `json` | `q`, `skill`, `location`, `job_type`, `max_required_years`, `listing`, `industry`, `source` | `posted_date` (default) or `title` | `asc` or `desc`; default `desc` for `posted_date`, `asc` for `title` | |
     | `/exports/candidates` | `format` | `q`, `skill`, `city` | `name` (default) or `years_experience` | `asc` or `desc`; default `asc` for `name`, `desc` for `years_experience` | |
     | `/exports/matches` | `format` | `q`, `skill`, `city` (choose the candidates) | `name` (default) or `years_experience` (order of the candidates) | as `/exports/candidates` | `top` = 1–10, default 10 (jobs per candidate) |
 
@@ -202,6 +205,35 @@ curl -OJ "http://localhost:8000/exports/matches?format=csv&top=10"          # th
 | `mock-site` | Optional demo job site (`mock-site/`): static pages, one JavaScript page, its own robots.txt; `http://mock-site:8080` inside Compose | none |
 
 Start-up order: `db` and `redis` become healthy, then `api` starts, then `worker` (once the API is healthy, so the schema exists). Every service has a health check: the API calls `/health` (PostgreSQL and Redis), the worker answers a Celery ping through Redis, and the frontend, database, Redis and mock site answer their own probes, so `docker compose ps` shows each as healthy. When the worker starts, it fails stale background jobs and syncs the `skills` table from `backend/app/skills/taxonomy.json`.
+
+## Architecture and design decisions
+
+```text
+ Browser ── React UI (frontend) ──HTTP──► FastAPI (api) ──────────► PostgreSQL
+                                             │  saves the job,        (jobs, candidates, skills, matches,
+                                             │  then sends its ID      background jobs and their logs)
+                                             ▼                              ▲
+                                        Redis (broker) ──► Celery worker ───┘
+                                                           crawl · resume · match
+```
+
+The API only validates, stores and reads. All slow work (crawling, PDF parsing and OCR, scoring every pair) runs in the worker, and every result, status, progress count and log line is written to PostgreSQL, where the UI reads it by polling. The full reasoning, with the alternatives that were rejected, is in [`docs/ARCHITECTURE_DECISIONS.md`](docs/ARCHITECTURE_DECISIONS.md) (28 ADRs). The main decisions:
+
+| Decision | Why | ADR |
+|---|---|---|
+| One backend codebase (modular monolith), run as two processes: the FastAPI server and Celery workers | One developer can explain all of it; no network hops between services; heavy work never blocks a request | 001, 023 |
+| PostgreSQL is the source of truth for background jobs; a Redis message carries only the job's ID | Status, progress and logs survive a Redis restart, and no personal data passes through the broker | 003, 004 |
+| Conditional state changes, cooperative cancellation, heartbeats; one bad page or file never fails the whole job | A finished job is never overwritten, a cancelled job stops at the next page or file, a lost worker is detected, and partial success shows its succeeded and failed counts | 005, 006, 026 |
+| The UI polls for progress | Simpler than WebSockets, and enough for jobs that take seconds to minutes | 007 |
+| Polite breadth-first crawler with one extractor plug-in per site; Playwright only when the static HTML lacks the jobs | Adding a source is one file; most pages need no browser; robots.txt, rate limits and the SSRF guard apply to every source | 008–012 |
+| PyMuPDF for text and layout, pdfplumber for tables and garbled pages, Tesseract for scans; a resume that cannot be read is flagged | Each library does what it is best at; nothing is guessed | 013, 014 |
+| Own skills taxonomy with aliases and rules, used for jobs and resumes alike | Deterministic and testable; "ReactJS" and "React" are the same skill on both sides | 015 |
+| The brief's formula unchanged, computed with exact fractions, with written edge-case rules; TF-IDF only to order exactly equal scores | Every score can be checked by hand and explained in one sentence | 016–018 |
+| All pairs precomputed by a `match` job and replaced in one transaction | Top-10 pages and exports are single indexed reads; readers never see half a run | 019 |
+| De-duplication: jobs by their apply URL, candidates by file hash and email | A listing card and its detail page become one job; a re-uploaded resume is skipped | 020 |
+| Real or demo is derived from the job's source, never stored as a separate flag | An invented job can never be shown as a real opening | 028 |
+| Routes without a version prefix (`/candidates/{id}/matches`, not `/api/v1/…`) | The paths match the brief exactly | 027 |
+| No user accounts or authentication | Out of scope for this assignment; run FITSCAN on a trusted machine ([Security controls](#security-controls)) | none |
 
 ## How crawling works
 
@@ -249,6 +281,8 @@ score = 70 × R + 15 × N + 10 × E + 5 × L          (default weights: MATCH_WE
 | **E**, experience | `min(1, candidate's years ÷ job's minimum)`: linear below the minimum |
 | **L**, location | 1 if the job is remote or in the candidate's city, otherwise 0 |
 
+The score is between 0 and 100. For example, a candidate with 3 of a job's 4 required skills, 1 of its 2 nice-to-have skills, 2 years against a 3-year minimum, in the job's city, scores 70 × 3/4 + 15 × 1/2 + 10 × 2/3 + 5 × 1 = 71.67. A match run can use other weights: four whole numbers that add up to 100 (see [Compute matches](#compute-matches)). The run records the weights it used; the hand check below used the defaults.
+
 Skills are compared by their canonical names from the taxonomy, so "ReactJS" on a resume matches "React" in a job; a candidate's other skills neither add nor remove points. Cities go through the same normalizer as resume parsing, so "Bangalore, Karnataka" and "Bengaluru" are the same city; a city that is not in `cities.json` is compared by the text before the first comma. "Hybrid" jobs count as city-based.
 
 **Edge cases** (ADR-017):
@@ -274,36 +308,78 @@ Skills are compared by their canonical names from the taxonomy, so "ReactJS" on 
 
 ## Matching hand check (5 candidates)
 
-Done on 19 November 2026 on the Docker stack. The data was 108 crawled jobs: 100 from Fake Python Jobs after a full crawl (101 pages), and 8 from the mock site. 18 of them have extracted skills; the other 90 have none. The 5 candidates were parsed from synthetic resumes (`tests/resume_pdfs.py`; the people are invented), and one match run scored 540 pairs. For each candidate, the top 3 and one job without skills were calculated by hand from the database rows (skills, years, city) and compared with the stored score and the API. R = required skills matched / required, N = nice-to-have matched / nice-to-have.
+Done on 22 November 2026 on the stored results of the latest match run (`computed_at` 13:50:44 UTC, default weights 70 / 15 / 10 / 5). Nothing was recomputed for this check. That run scored 128 jobs: the 108 demo jobs (100 from Fake Python Jobs, 8 from the mock site) and 20 real postings (10 from Code for America's Greenhouse board, 10 from Spotify's Lever board). 37 of the 128 jobs have extracted skills (18 demo, 19 real).
 
-| Candidate (city, years) | Rank: job (location) | Hand calculation: R + N + E + L | Stored / shown |
-|---|---|---|---|
-| Asha Verma, Senior Backend Engineer (Pune, 6) | 1: Go Backend Engineer (remote) | 70·3/4 + 15·1/1 + 10 (6 ≥ 5) + 5 (remote) = 82.5 | 82.5 / 82.50 |
-| | 2: Backend Python Developer (Pune) | 70·3/5 + 15·3/3 + 10 (6 ≥ 3) + 5 (same city) = 72 | 72 / 72.00 |
-| | 3: Software Developer (Python) (Martinezburgh, AE) | 70·1/4 + 15 (no nice-to-have list) + 10 (no minimum) + 0 = 42.5 | 42.5 / 42.50 |
-| Kiran Rao, Platform Engineer (Hyderabad, 9.5; resume read by OCR) | 1: Go Backend Engineer (remote) | 70·3/4 + 15·1/1 + 10 + 5 = 82.5 | 82.5 / 82.50 |
-| | 2: DevOps Engineer (Hyderabad) | 70·3/5 + 15·0/1 + 10 (9.5 ≥ 4) + 5 (same city) = 57 | 57 / 57.00 |
-| | 3: Backend Python Developer (Pune) | 70·2/5 + 15·3/3 + 10 + 0 = 53 | 53 / 53.00 |
-| Meera Iyer, Frontend Developer (Chennai, 4.3) | 1: Full Stack Developer (remote) | 70·2/4 + 15·1/2 + 10 (4.3 ≥ 3) + 5 = 57.5 | 57.5 / 57.50 |
-| | 2: Frontend Engineer (React) (Bengaluru) | 70·2/4 + 15·0/2 + 10 + 0 = 45 | 45 / 45.00 |
-| | 3: Software Developer (Python) (Martinezburgh, AE) | 70·1/4 + 15 + 10 + 0 = 42.5 | 42.5 / 42.50 |
-| Nikhil Joshi, QA Automation Engineer (Chennai, 3.5) | 1: QA Automation Engineer (Chennai, hybrid) | 70·3/3 + 15·1/1 + 10 (3.5 ≥ 2) + 5 (hybrid = city-based, same city) = 100 | 100 / 100.00 |
-| | 2: Software Developer (Python) (Martinezburgh, AE) | 70·4/4 + 15 + 10 + 0 = 95 | 95 / 95.00 |
-| | 3: Back-End Web Developer (Python, Django) (South Kimberly, AA) | 70·3/4 + 15 + 10 + 0 = 77.5 | 77.5 / 77.50 |
-| Rahul Mehta, Data Analyst (Bengaluru, 8.4) | 1: Data Analyst (remote) | 70·3/4 + 15·1/2 + 10 (8.4 ≥ 1) + 5 = 75 | 75 / 75.00 |
-| | 2: Machine Learning Intern (Pune) | 70·2/3 + 15·0/1 + 10 + 0 = 170/3 | 56.666666666666664 / 56.67 |
-| | 3: Software Developer (Python) (Martinezburgh, AE) | 70·1/4 + 15 + 10 + 0 = 42.5 | 42.5 / 42.50 |
+The 5 candidates were parsed from synthetic resumes made with `tests/resume_pdfs.py`; the people are invented, and Kiran Rao's resume is a scanned image read by OCR. The database also holds other uploaded resumes, which are not synthetic; they are left out of this README and of [`samples/`](samples/).
 
-**Result:** all 15 top-3 scores, and 12 more pairs checked the same way (each candidate's job without skills, the tied and lower-ranked pairs below), equal the hand calculation, and every explanation states the same points. No discrepancy was found. The top 1–2 jobs make sense for every candidate: a backend engineer gets the backend jobs, the platform engineer gets the Go and DevOps jobs, the frontend developer gets the full-stack and React jobs, the QA engineer gets the QA job in his city (100), and the data analyst gets the data-analyst job. Rank 3 is often a weak Python-only match, because only 18 jobs have skills.
+For each candidate, the top 3 jobs, in the order of `GET /candidates/{id}/matches`, were recalculated by hand from the database rows (the job's required and nice-to-have skills, its minimum years and location; the candidate's skills, years and city) and compared with the stored score, the score shown (2 decimals) and the explanation. R = required skills matched / required, N = nice-to-have matched / nice-to-have, and "no list" means N = 1 because the job lists no nice-to-have skills.
 
-**Jobs without skills (O2).** "Air broker" (West Colin, AP), like the other 89 jobs without skills, scores 0 + 0 + 10 (no minimum) + 0 (other city) = **10** for every candidate (stored 10, explanation "No required or nice-to-have skills could be identified for this job, so it gets no skill points"). None of the 90 appears in any candidate's top 10. With the old rule (N = 1) they would score 25, level with Rahul Mehta's ranks 9 and 10.
+| Candidate (city, years) | Rank: job, company (location, listing) | Matched / missing skills | Hand calculation: R + N + E + L | Stored / shown |
+|---|---|---|---|---|
+| Asha Verma, Senior Backend Engineer (Pune, 6) | 1: Go Backend Engineer, Streamline (remote, demo) | Go, PostgreSQL, REST, Kubernetes / Kafka | 70·3/4 + 15·1/1 + 10 (6 ≥ 5) + 5 (remote) = 82.5 | 82.5 / 82.50 |
+| | 2: Backend Python Developer, Acme Analytics (Pune, demo) | FastAPI, PostgreSQL, Python, Docker, Kubernetes, Redis / Django, Pytest | 70·3/5 + 15·3/3 + 10 (6 ≥ 3) + 5 (same city) = 72 | 72 / 72.00 |
+| | 3: Staff Data Engineer, Code for America (remote in the U.S., real) | PostgreSQL, Python / 6 others, including Lead Generation and Warehouse Management | 70·2/8 + 15 (no list) + 10·6/7 + 5 (remote) = 645/14 | 46.07142857142857 / 46.07 |
+| Kiran Rao, Platform Engineer (Hyderabad, 9.5; OCR) | 1: Go Backend Engineer, Streamline (remote, demo) | Go, PostgreSQL, REST, Kubernetes / Kafka | 70·3/4 + 15·1/1 + 10 (9.5 ≥ 5) + 5 = 82.5 | 82.5 / 82.50 |
+| | 2: DevOps Engineer, CloudNest (Hyderabad, demo) | Docker, Kubernetes, Terraform / AWS, Linux, Ansible | 70·3/5 + 15·0/1 + 10 (9.5 ≥ 4) + 5 (same city) = 57 | 57 / 57.00 |
+| | 3: Backend Python Developer, Acme Analytics (Pune, demo) | PostgreSQL, Python, Docker, Kubernetes, Redis / Django, FastAPI, Pytest | 70·2/5 + 15·3/3 + 10 + 0 (other city) = 53 | 53 / 53.00 |
+| Meera Iyer, Frontend Developer (Chennai, 4.3) | 1: Full Stack Developer, Orbit Commerce (remote, demo) | Node.js, React, AWS / JavaScript, MongoDB, GraphQL | 70·2/4 + 15·1/2 + 10 (4.3 ≥ 3) + 5 = 57.5 | 57.5 / 57.50 |
+| | 2: Staff Solutions Engineer, Code for America (remote in the U.S., real) | C#, Python / Java, Machine Learning, NLP, Procurement, Ruby | 70·2/7 + 15 (no list) + 10·4.3/7 + 5 = 323/7 | 46.142857142857146 / 46.14 |
+| | 3: Frontend Engineer (React), Brightside Labs (Bengaluru, demo) | React, TypeScript / CSS, Git, Figma, Next.js | 70·2/4 + 15·0/2 + 10 (4.3 ≥ 2) + 0 = 45 | 45 / 45.00 |
+| Nikhil Joshi, QA Automation Engineer (Chennai, 3.5) | 1: QA Automation Engineer, Testwise (Chennai, hybrid, demo) | Pytest, Python, Selenium, Jenkins / none | 70·3/3 + 15·1/1 + 10 (3.5 ≥ 2) + 5 (hybrid counts as city-based; same city) = 100 | 100 / 100.00 |
+| | 2: Software Developer (Python), Moreno-Rodriguez (Martinezburgh, AE, demo) | Django, Flask, HTML, Python / none | 70·4/4 + 15 (no list) + 10 (no minimum) + 0 = 95 | 95 / 95.00 |
+| | 3: Back-End Web Developer (Python, Django), Stewart-Alexander (South Kimberly, AA, demo) | CSS, Flask, HTML / Java | 70·3/4 + 15 (no list) + 10 + 0 = 77.5 | 77.5 / 77.50 |
+| Rahul Mehta, Data Analyst (Bengaluru, 8.4) | 1: Data Analyst, Northwind Retail (remote, demo) | Excel, Power BI, SQL, Python / Data Analysis, Tableau | 70·3/4 + 15·1/2 + 10 (8.4 ≥ 1) + 5 = 75 | 75 / 75.00 |
+| | 2: Staff Data Engineer, Code for America (remote in the U.S., real) | Power BI, Python, R, SQL / Lead Generation, PostgreSQL, Tableau, Warehouse Management | 70·4/8 + 15 (no list) + 10 (8.4 ≥ 7) + 5 = 65 | 65 / 65.00 |
+| | 3: Machine Learning Intern, Lumen AI (Pune, demo) | Pandas, Python / Machine Learning, PyTorch | 70·2/3 + 15·0/1 + 10 (no minimum) + 0 = 170/3 | 56.666666666666664 / 56.67 |
 
-**Exact ties.** Nikhil Joshi's ranks 4–6 all score exactly 215/3 (stored 71.66666666666667), from 4 of 6, 4 of 6 and 2 of 3 required skills. They are ordered by text similarity: 0.1153, 0.0762, 0.0378.
+**Result:** all 15 hand calculations equal the stored scores (the stored value is the exact fraction as a double), the shown scores are those values rounded to 2 decimals, and every explanation states the same points. No discrepancy was found.
+
+**Do the top 3 make sense?**
+
+| Candidate | Verdict | Why |
+|---|---|---|
+| Asha Verma | Yes for 1–2; 3 is weak | Ranks 1 and 2 are backend jobs built on her stack (Go, PostgreSQL, REST; FastAPI, PostgreSQL, Python), one remote and one in Pune. Rank 3 is a data-engineering role where she has 2 of 8 required skills. It ranks third with 46.07, far below 72: 17.5 points for skills, plus 15 because the posting lists no nice-to-have skills and 5 for remote, although it is remote within the U.S. |
+| Kiran Rao | Yes | All three are infrastructure-heavy roles that fit a platform engineer: Go and Kubernetes (remote), DevOps with Docker, Kubernetes and Terraform in Hyderabad, then backend Python. |
+| Meera Iyer | 1 and 3 yes; 2 questionable | Ranks 1 (full stack with React and Node.js) and 3 (React frontend) fit. Rank 2 is questionable for two reasons. Its location is "Remote (in the U.S.)", but FITSCAN counts any remote job as a location match, so a candidate in Chennai gets the 5 location points. And the posting lists no nice-to-have skills, so N = 1 gives 15 points, although she has only 2 of its 7 required skills (C# and Python, neither a frontend skill). Those 20 points put it 1.14 points above the React job, which lists two nice-to-haves she lacks (Figma, Next.js) and is in another city. |
+| Nikhil Joshi | Rank 1 yes; 2–3 by skills only | Rank 1 is his exact role in his city (100). Ranks 2 and 3 are developer jobs, not QA, that match his web skills (Django, Flask, HTML and Python; CSS, Flask and HTML). The formula reads skills, not job titles. Both are Fake Python Jobs postings, whose skills come from generated filler text. |
+| Rahul Mehta | 1 yes; 2 plausible; 3 questionable | Rank 1 is a data-analyst role. Rank 2 is a data-engineering role, not analysis, that uses his SQL, Python, R and Power BI. It is plausible on skills, but like Meera Iyer's rank 2 it is remote within the U.S. and still gets the 5 location points. Rank 3 is questionable: a Machine Learning Intern role for a candidate with 8.4 years of experience. The job sets no minimum, so E = 1 (10 points), and FITSCAN has no seniority or maximum-experience check, so an internship is never marked down. It ranks third on 2 of 3 required skills (Pandas, Python), although it is in another city (Pune) and he lacks its nice-to-have skill (PyTorch). |
+
+**Other checks on the same run:**
+- *Jobs without skills (O2).* 91 of the 128 jobs have no extracted skills, so they score at most 15. "Air broker" (West Colin, AP) scores 0 + 0 + 10 (no minimum) + 0 (other city) = **10** for each of the 5 candidates (stored 10; explanation "No required or nice-to-have skills could be identified for this job, so it gets no skill points"). No job without skills appears in any of the 5 candidates' top 10.
+- *Exact ties.* Nikhil Joshi's ranks 4–6 (Senior Python Developer; Back-End Web Developer (Python, Django) in New Elizabethside; Python Programmer (Entry-Level)) all score exactly 215/3, stored as 71.66666666666667. They are ordered by text similarity: 0.1213, 0.0788, 0.0422.
+- *Real and demo jobs together.* Real postings are in the top 10 of 4 of the 5 candidates (3 for Asha, Kiran and Meera, 4 for Rahul, none for Nikhil), scored by the same formula.
 
 **Observations:**
-- *A job with required skills but no nice-to-have list gives 15 points even when none of its required skills match.* This is the N = 1 rule, **kept** after this check (ADR-017, LLD §7.5): without it a perfect candidate for such a job could score at most 85, and the 70 points of the required ratio still decide the ranking. The Fake Python Jobs pages never list nice-to-have skills, so all 10 of those jobs with skills get this. Rahul Mehta's ranks 9–10 are "Python Programmer" jobs at 25.00 with 0 of 2 and 0 of 5 required skills. His own-city "Frontend Engineer (React)" job, where he also has no skills but which lists nice-to-haves, scores 15.00. Only the bottom of a top 10 is affected, and the explanation says why ("The job lists no nice-to-have skills (15.00 pts).").
-- *Fake Python Jobs descriptions are generated filler text.* A skill word in them is not a real requirement: one "Back-End Web Developer (Python, Django)" job requires CSS, Flask, HTML and Java, because those words occur in its text. Its towns are invented, so no candidate gets location points for those jobs.
-- *Titles do not produce skills.* Rahul Mehta misses "Data Analysis" for the Data Analyst job, because his resume says "Data Analyst" only as a title.
+- *A job with required skills but no nice-to-have list gives 15 points.* This is the N = 1 rule, **kept** (ADR-017, LLD §7.5): without it, a perfect candidate for such a job could score at most 85. None of the 20 real postings has nice-to-have skills that FITSCAN detected, and Fake Python Jobs pages never list any, so all of them get the 15 points. Against a demo job that lists nice-to-haves the candidate lacks, this can move a weaker skill match up by one place, as in Meera Iyer's rank 2. The explanation says why ("The job lists no nice-to-have skills (15.00 pts).").
+- *Keyword skill extraction makes mistakes on real postings.* It matches taxonomy words and aliases without knowing the sense in which they are used. The Staff Data Engineer posting says "Lead generation and optimization of data architecture" (lead as a verb) and "data warehouses". These were read as the skills Lead Generation and Warehouse Management: two false required skills, which lower R for every candidate on that job.
+- *"Remote" is not checked against the country.* The Code for America roles are remote within the U.S., but they get the 5 location points for candidates in India (Asha Verma's rank 3, Meera Iyer's and Rahul Mehta's rank 2).
+- *Titles do not produce skills.* Rahul Mehta misses "Data Analysis" for the Data Analyst job, because his resume says "Data Analyst" only as his title.
+
+## Known limitations
+
+- **Skills.** Skills come from FITSCAN's own taxonomy (`backend/app/skills/taxonomy.json`) and keyword rules. A skill missing from the taxonomy is never seen, and a skill word used in another sense can become a false skill (see the hand check). The precision and recall in [Tests](#tests) were measured on a small hand-labelled set; real postings contain more errors.
+- **Required or nice-to-have.** A skill counts as nice-to-have only under a heading such as "Nice to have" or "Preferred", or in a sentence with words such as "preferred" or "a plus"; every other skill counts as required. A posting with no nice-to-have skills gets N = 1 (15 points), as all real postings in the current data do.
+- **What the score reads.** Only skills, years of experience and city. Job titles, seniority, domain and the rest of the text are ignored: TF-IDF only orders exactly equal scores, and embedding-based matching was deferred. Extra experience is never penalised, because E is capped at 1.
+- **Location** is remote or the same normalised city, nothing in between: no distance, no country or time-zone check for remote jobs, and "Hybrid" counts as city-based. Cities missing from `backend/app/locations/cities.json` are compared by the text before the first comma.
+- **Resume parsing** uses layout and text rules (name from the largest font, title and years from the Experience section). An unusual layout can give a wrong or missing field; the title fix in commit `a422e47` is one example. OCR is Tesseract with English (`OCR_LANGUAGE=eng`), and its quality depends on the scan.
+- **Matches are precomputed.** After resumes are uploaded, someone has to start a match run; automatic re-matching runs only after a crawl. Each run rescores every pair, which is fine at this size (ADR-019 records the path for larger data).
+- **Crawling.** An interrupted crawl cannot be resumed (deferred), and a lost task is not re-sent. A site needs its own extractor, a Greenhouse or Lever board, or schema.org `JobPosting` data. Company career pages are verified only with a saved test page: the one live attempt (Shopify careers) found no jobs. A crawl's allowed domain is a whole host, so a crawl seeded at a careers page can wander to other pages of that host. Lever postings do not name the company, and Greenhouse publishes no salaries ([`DATA_SOURCES.md`](DATA_SOURCES.md)).
+- **Demo data.** Fake Python Jobs descriptions, companies and towns are generated, so their skills and locations do not mean much; real postings are the better test of matching quality.
+- **Duplicates.** Two people who share an email address would be merged into one candidate (ADR-020).
+- **Security and privacy.** There are no user accounts; FITSCAN is meant for a trusted machine or network. Uploaded resumes stay on the `uploads` volume until the retention command is run.
+
+## Time spent
+
+**About 60 hours**, from 11 to 22 November 2026, at about 5 hours a day (the author's estimate).
+
+The git history starts on 18 November. The design documents in [`docs/`](docs/) (HLD, architecture decisions, LLD) were written before that and first committed with Phases 1–3. Commit dates are India Standard Time:
+
+| Date (2026) | Work, by commit |
+|---|---|
+| 18 November | Phases 1–3: project setup, database, background jobs and the crawler (`af0c829`, `37253d6`) |
+| 19 November | Phase 4: resume upload, PDF parsing and OCR (`d1eb2bb`); Phase 5: matching engine (`9d41403`); Phase 6: search, detail and export API (`bbe6bdb`) |
+| 21 November | Phase 7: landing page (`221dccc`, `441225d`, `1c32d69`); Phase 7B: application UI (`ed764a2`) |
+| 22 November | Phase 7C: adjustable weights, automatic re-matching and CI (`70be8ea`); Phase 7D: real jobs across industries (`1627f53`); Phase 8: integration and verification (`b724382`); resume title fix (`a422e47`); sample outputs and this README |
 
 ## Local development
 
@@ -439,6 +515,9 @@ docker compose exec api python -m app.services.reclassify --apply    # write it
 ├── docker-compose.yml        # all services
 ├── docker-compose.dev.yml    # development only: publishes db and redis on 127.0.0.1
 ├── .env.example              # documented configuration, no secrets
+├── DATA_SOURCES.md           # where jobs and resumes come from, terms and robots.txt checks
+├── AI_USAGE.md               # how AI tools were used
+├── samples/                  # sample outputs (synthetic data only): jobs, candidates, top-10 match table
 ├── .github/workflows/ci.yml  # CI: every backend test, and the frontend build
 ├── backend/
 │   ├── Dockerfile            # targets: api, worker
@@ -476,7 +555,7 @@ docker compose exec api python -m app.services.reclassify --apply    # write it
 │       ├── pages/DashboardPage.tsx, …  # application pages: /app dashboard, background jobs, jobs and candidates (each with a detail page), matching, skills, exports
 │       ├── hooks/  types/
 │       └── main.tsx
-└── docs/                     # HLD, LLD, ADRs, diagrams
+└── docs/                     # HLD, LLD, ADRs, diagrams, demo video script
 ```
 
 The full planned layout is in [LLD Part 2](docs/LLD/02_Project_Structure.md).
