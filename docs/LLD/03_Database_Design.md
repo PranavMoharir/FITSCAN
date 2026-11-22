@@ -1,6 +1,6 @@
 # 3. Database Design
 
-> **Status: Planned.** Tables, columns, types and constraints are taken from HLD §11. Nothing here adds a column. The schema will be created with Alembic migrations, which the `api` service applies on start-up.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ## 3.1 Overview
 

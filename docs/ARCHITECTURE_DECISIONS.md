@@ -278,6 +278,6 @@ All records have status **Proposed**. They become **Accepted** once implementati
   - Keyword rules in SQL, or a trained classifier: hard to explain and test, or a new dependency and training data.
 - **Consequences.**
   - The Jobs filters, counts and exports stay plain SQL; the job page shows the evidence for the industry.
-  - The migration fills the industry of existing jobs once; when the rules change, a job is reclassified on its next crawl (the job page says when the current rules would classify it differently).
+  - The migration fills the industry of existing jobs once; when the rules change, a job is reclassified on its next crawl, or at once with `python -m app.services.reclassify --apply`, which writes only `jobs.industry` (the job page says when the current rules would classify it differently).
   - Industries never affect matching; real and demo jobs are scored by the same engine.
   - A removed extractor's old jobs count as demo, never as real.

@@ -1,6 +1,6 @@
 # 6. Resume Parsing and Skill Extraction
 
-> **Status: Planned.** Resume parsing follows HLD §8.7 and §9.2; skill extraction follows HLD §8.8. Code lives in `app/resumes` and `app/skills` (Part 2). Resume parsing runs inside the `resume` background job (Part 5).
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ## 6.1 Overview
 

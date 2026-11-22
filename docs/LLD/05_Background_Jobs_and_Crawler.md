@@ -1,6 +1,6 @@
 # 5. Background Jobs and Crawler
 
-> **Status: Planned.** Background processing follows HLD §13, the crawler HLD §8.5, and the extractors HLD §8.6. Code lives in `app/worker`, `app/crawler` and `app/extractors` (Part 2).
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 >
 > Sections 5.1–5.8 cover background job processing; Sections 5.9–5.17 cover the crawler.
 
@@ -306,8 +306,8 @@ Every job gets one industry (22 November 2026; ADR-028): Software & IT, AI & Dat
 | A skill whose taxonomy category belongs to the industry (Python: Software & IT; Payroll: Human Resources); Excel, Agile, Scrum and Jira point nowhere, Figma to Design | 1 | 4 |
 | A term of the description (e.g. "patients", "litigation", "supply chain") | 1 | 3 |
 
-Terms match like skills: lower case, whole words, longest first, no overlaps ("data engineer" is one term; "tax" is not found in "taxi"). Each term counts once. The industry with the most points wins if it has at least 3 and strictly more than the next; otherwise the job is `other` (Other / Unclassified), so weak or tied evidence is never forced into an industry.
+Terms match like skills: lower case, whole words, longest first, no overlaps ("data engineer" is one term; "tax" is not found in "taxi"). A title written "Role, specialty" ("Engineer, automotive") is also read in the usual order. Each term counts once. The industry with the most points wins if it has at least 3 and strictly more than the next; otherwise the job is `other` (Other / Unclassified), so weak or tied evidence is never forced into an industry.
 
 **When.** `save_records` classifies each job from the values it will store (the new title; the new description or, if the record has none, the stored one; the new skills or the stored ones) and writes `industry` in the same upsert. `GET /jobs/{id}` recomputes the classification for its `industry_reasons`, e.g. `Title: "nurse" (+3)`, `Skills: BLS, Patient Care (+2)`; if the rules changed since the job was saved, it says so. The rules file is checked when it loads: the 13 codes in order, each term in one industry only, and skill exceptions that name real skills.
 
-**Existing jobs.** Migration `5d2e8c41a7b9` adds the column (default `other`) and classifies the jobs already stored with the same rules, writing only that column. A later change of rules reaches a job when it is crawled again.
+**Existing jobs.** Migration `5d2e8c41a7b9` adds the column (default `other`) and classifies the jobs already stored with the same rules, writing only that column. A later change of rules reaches a job when it is crawled again, or at once with `python -m app.services.reclassify --apply` (a dry run without `--apply`; it writes only `jobs.industry`).

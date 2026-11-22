@@ -12,7 +12,8 @@ Points (each term counted once):
 The industry with the most points wins if it has at least 3 and strictly more than the next one.
 Otherwise the job is `other` ("Other / Unclassified"): a weak or tied signal is never forced into
 an industry. Matching works like skill matching: lower case, whole words, longest term first, no
-overlaps, so "data engineer" is one term and "software engineer" counts only "software".
+overlaps, so "data engineer" is one term and "software engineer" counts only "software". A title
+written the other way round ("Engineer, automotive") is also read in the usual order.
 
 Industries never change a match score; they only help people browse and filter jobs.
 """
@@ -139,6 +140,16 @@ class Classification:
         return f"{labels[first]} and {labels[second]} are equally likely ({top} points each)."
 
 
+def _title_text(title: str | None) -> str | None:
+    """The title, plus its usual word order when it is written "Role, specialty" ("Engineer, automotive")."""
+    if not title or "," not in title:
+        return title
+    head, _, tail = title.partition(",")
+    if not tail.strip() or len(head.split()) > 3:
+        return title
+    return f"{title} | {tail.strip()} {head.strip()}"
+
+
 def classify(title: str | None, description: str | None, skills: Iterable[str]) -> Classification:
     """The industry of a job from its title, description and canonical skill names."""
     rules = get_rules()
@@ -156,7 +167,7 @@ def classify(title: str | None, description: str | None, skills: Iterable[str]) 
             points[industry] += POINTS[kind] * len(counted)
             signals.extend(Signal(kind, term, industry) for term in counted)
 
-    count("title", rules.terms["title"].find(title))
+    count("title", rules.terms["title"].find(_title_text(title)))
     count("skill", ((name, rules.skill_industry[name]) for name in sorted(set(skills))
                     if rules.skill_industry.get(name)))
     count("description", rules.terms["description"].find(description))

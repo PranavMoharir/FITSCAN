@@ -27,7 +27,7 @@
       "title": ["finance", "financial", "accountant", "accounting", "auditor", "audit", "bookkeeper", "treasury",
                 "tax", "banker", "banking", "bank", "credit analyst", "loan officer", "underwriter", "actuary",
                 "actuarial", "investment", "portfolio manager", "wealth", "cfo", "chief financial officer",
-                "quantitative analyst", "risk analyst", "insurance", "claims adjuster"],
+                "quantitative analyst", "risk analyst", "insurance", "claims adjuster", "loss adjuster", "trader", "trading"],
       "description": ["financial", "banking", "investment", "investments", "accounting", "audit", "portfolio",
                       "lending", "underwriting", "insurance"]
     },
@@ -35,7 +35,7 @@
       "label": "Marketing",
       "title": ["marketing", "marketer", "seo", "social media", "content strategist", "content writer", "copywriter",
                 "copy writer", "brand manager", "public relations", "communications manager", "growth marketing",
-                "media buyer", "advertising", "market research"],
+                "media buyer", "media planner", "advertising", "market research"],
       "description": ["marketing", "campaigns", "brand awareness", "social media", "seo", "content strategy",
                       "audience"]
     },
@@ -75,7 +75,9 @@
       "title": ["nurse", "nursing", "rn", "lpn", "physician", "doctor", "surgeon", "medical", "clinical", "clinician",
                 "pharmacist", "pharmacy", "therapist", "physiotherapist", "dentist", "dental", "caregiver",
                 "care assistant", "healthcare", "health care", "paramedic", "radiographer", "radiologist",
-                "phlebotomist", "midwife", "psychologist"],
+                "phlebotomist", "midwife", "psychologist", "psychiatrist", "neurosurgeon", "ophthalmologist",
+                "optometrist", "optician", "audiologist", "dermatologist", "cardiologist", "oncologist",
+                "paediatrician", "pediatrician", "anaesthetist", "anesthesiologist"],
       "description": ["patients", "patient", "clinical", "hospital", "clinic", "nursing", "care plans"]
     },
     "education": {
@@ -90,6 +92,7 @@
                 "structural engineer", "manufacturing engineer", "process engineer", "industrial engineer",
                 "aerospace engineer", "automotive engineer", "electronics engineer", "hardware engineer",
                 "energy engineer", "environmental engineer", "maintenance engineer", "quality engineer",
+                "materials engineer", "broadcast engineer", "communications engineer", "surveyor",
                 "mechanical", "electrical", "civil engineering", "mechatronics", "drafter", "draftsman"],
       "description": ["mechanical", "electrical", "civil", "manufacturing", "structural", "hvac", "machinery",
                       "production line"]
@@ -97,7 +100,7 @@
     "legal": {
       "label": "Legal",
       "title": ["lawyer", "attorney", "solicitor", "barrister", "paralegal", "legal", "counsel", "general counsel",
-                "compliance officer", "compliance analyst", "contracts manager", "notary"],
+                "compliance officer", "compliance analyst", "contracts manager", "notary", "conveyancer"],
       "description": ["litigation", "law firm", "attorney", "attorneys", "paralegal", "legal counsel",
                       "legal advice", "court"]
     },

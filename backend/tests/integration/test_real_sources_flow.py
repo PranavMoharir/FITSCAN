@@ -256,3 +256,26 @@ def test_unknown_sources_are_never_shown_as_real(boards):
         session.commit()
     assert jobs(boards)["Orphan job"]["listing"] == "demo"
     assert total(boards, listing="real") == 0 and total(boards, listing="demo") == 1
+
+
+def test_reclassify_brings_stored_jobs_up_to_date_and_writes_only_industry(boards, capsys):
+    from datetime import UTC, datetime
+
+    from app.services import reclassify
+
+    stamp = datetime(2026, 1, 1, tzinfo=UTC)
+    with SessionLocal() as session:  # stored before a rules change: classified "other"
+        session.add_all([Job(title="Engineer, automotive", apply_url="https://a.example/1", source="greenhouse",
+                             dedup_key="r1", industry="other", updated_at=stamp),
+                         Job(title="Barista", apply_url="https://a.example/2", source="greenhouse", dedup_key="r2",
+                             industry="other", updated_at=stamp)])
+        session.commit()
+    assert reclassify.main([]) == 0  # a dry run writes nothing
+    assert "Would change the industry of 1 jobs." in capsys.readouterr().out
+    with SessionLocal() as session:
+        assert session.execute(select(Job.industry).where(Job.dedup_key == "r1")).scalar_one() == "other"
+    assert reclassify.main(["--apply"]) == 0
+    with SessionLocal() as session:
+        rows = {r.dedup_key: (r.industry, r.updated_at) for r in session.execute(select(Job.dedup_key, Job.industry, Job.updated_at))}
+    assert rows == {"r1": ("engineering", stamp), "r2": ("other", stamp)}
+    assert reclassify.main([]) == 0 and "Would change the industry of 0 jobs." in capsys.readouterr().out

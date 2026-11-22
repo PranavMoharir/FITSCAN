@@ -1,6 +1,6 @@
 # 10. End-to-End Workflows
 
-> **Status: Planned.** This part connects the earlier parts into four complete flows. Each step names the module that does the work and where it is explained in detail, so the details are not repeated here.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ## 10.1 The Big Picture
 

@@ -1,6 +1,6 @@
 # 1. Introduction and Architecture
 
-> **Status: Planned.** On 18 November 2026 the repository contains documentation only. There is no backend, frontend, test or Docker code yet. Everything in this LLD describes the **intended** implementation, derived from the High-Level Design. Section 1.2 explains the status labels.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ## 1.1 Purpose of This LLD
 

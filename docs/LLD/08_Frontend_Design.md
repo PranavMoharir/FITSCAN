@@ -1,6 +1,6 @@
 # 8. Frontend Design
 
-> **Status: Planned.** The pages, components and polling rules come from HLD §8.1. Folders follow Part 2 (`frontend/src`).
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ## 8.1 Overview
 

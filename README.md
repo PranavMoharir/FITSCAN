@@ -2,7 +2,7 @@
 
 A platform that collects job openings by crawling, reads candidate resumes from PDFs, and matches each candidate to the jobs that fit best (and each job to its best candidates). Crawling, parsing and matching run as background jobs; users watch progress, browse results and export CSV or JSON.
 
-The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Matching_Platform_Full.md), the [LLD](docs/LLD/README.md) and the [architecture decisions](docs/ARCHITECTURE_DECISIONS.md).
+The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Matching_Platform_Full.md), the [LLD](docs/LLD/README.md) and the [architecture decisions](docs/ARCHITECTURE_DECISIONS.md). Data sources: [`DATA_SOURCES.md`](DATA_SOURCES.md). How AI was used: [`AI_USAGE.md`](AI_USAGE.md). Demo video plan: [`docs/DEMO_VIDEO_SCRIPT.md`](docs/DEMO_VIDEO_SCRIPT.md).
 
 **Stack:**
 - Backend: Python 3.12, FastAPI, Pydantic, SQLAlchemy 2 and Alembic on PostgreSQL 17; Celery workers with Redis as the broker.
@@ -12,17 +12,18 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 
 ## Status
 
-**Phases 1–7 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, the public landing page and the application UI, plus three optional features: adjustable scoring weights, automatic re-matching after crawls and a CI pipeline, and real job sources across industries next to the demo sites. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
+**Phases 1–8 done (final):** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, the public landing page and the application UI, plus three optional features: adjustable scoring weights, automatic re-matching after crawls and a CI pipeline, and real job sources across industries next to the demo sites. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
 
 | Works now | Not built yet |
 |---|---|
-| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | `samples/`, `AI_USAGE.md` |
+| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site; every service has a health check | `samples/` (sample exports) |
 | The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | Deferred optional features: resuming an interrupted crawl, and embedding-based (semantic) matching |
 | Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | |
 | Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | |
 | Extractors: Fake Python Jobs, the mock site (static and JavaScript), generic JSON-LD | |
 | Real job sources: company career pages (schema.org `JobPosting`), Greenhouse and Lever job boards (public APIs); demo sites stay and are always labelled demo ([`DATA_SOURCES.md`](DATA_SOURCES.md)) | |
 | Industries: every job is classified (13 industries, or Other / Unclassified) with the evidence shown; filters for real or demo listings, industry and source | |
+| Live verification (22 November 2026): a Greenhouse board (10 jobs) and a Lever board (10 jobs) crawled into the running stack; real/demo labels, industries, original-posting links and `AUTO_REMATCH=false` confirmed ([`DATA_SOURCES.md`](DATA_SOURCES.md)) | |
 | Job validation, de-duplication (upsert by `dedup_key`), skills taxonomy and job skills | |
 | Resume upload: size and `%PDF-` checks per file, UUID storage, one background job per upload | |
 | PDF parsing: one- and two-column layouts, tables, garbled text, OCR of scanned pages (Tesseract) | |
@@ -200,7 +201,7 @@ curl -OJ "http://localhost:8000/exports/matches?format=csv&top=10"          # th
 | `redis` | Redis, the Celery message broker | none |
 | `mock-site` | Optional demo job site (`mock-site/`): static pages, one JavaScript page, its own robots.txt; `http://mock-site:8080` inside Compose | none |
 
-Start-up order: `db` and `redis` become healthy, then `api` starts, then `worker` (once the API is healthy, so the schema exists). When the worker starts, it fails stale background jobs and syncs the `skills` table from `backend/app/skills/taxonomy.json`.
+Start-up order: `db` and `redis` become healthy, then `api` starts, then `worker` (once the API is healthy, so the schema exists). Every service has a health check: the API calls `/health` (PostgreSQL and Redis), the worker answers a Celery ping through Redis, and the frontend, database, Redis and mock site answer their own probes, so `docker compose ps` shows each as healthy. When the worker starts, it fails stale background jobs and syncs the `skills` table from `backend/app/skills/taxonomy.json`.
 
 ## How crawling works
 
@@ -399,6 +400,17 @@ All settings are environment variables, documented in [`.env.example`](.env.exam
 - `VITE_API_BASE_URL` and `VITE_POLL_INTERVAL_MS` are compiled into the frontend at build time. After changing them, rebuild: `docker compose up --build frontend`.
 - Host-side URLs use `127.0.0.1`, not `localhost`: on Windows, psycopg can stall trying IPv6 (`::1`) first.
 
+## Security controls
+
+- **No secrets in the repository.** `.env` is git-ignored; `.env.example` holds placeholders only. Containers run as non-root users.
+- **Exposed ports.** Only the API (8000) and the UI (5173) are published. PostgreSQL and Redis are reachable only inside Compose (the development override publishes them on `127.0.0.1` only).
+- **API.** Every query and body is validated by Pydantic; unknown query parameters are a 422; one error envelope; bounded page sizes; queries use bound parameters (literal `%` and `_` in searches); CORS allows only `CORS_ORIGINS`.
+- **Crawler.** Allow-listed hosts only; private, loopback, link-local and reserved addresses refused on every redirect hop and browser request (DNS checked); robots.txt and `Crawl-delay` obeyed; per-host rate limit, bounded retries, 5 MB page limit; no logins or access controls are bypassed; demo-site jobs can never be stored as real.
+- **Resumes.** Size limits per file and per request (checked while streaming), `%PDF-` signature check, page limit, OCR time limit, UUID storage names (never the user's file name), a read-only uploads volume for the worker, logs without names or contact details, and a retention command for old uploads.
+- **Exports.** Streamed; CSV cells that could start a formula are neutralised.
+- **Worker.** One bad item never stops a job; stale jobs are failed by heartbeat checks; a match run never overwrites newer results; manual and automatic match requests share one database lock.
+- **Out of scope.** There are no user accounts or authentication: run FITSCAN on a trusted machine or network.
+
 ## Database migrations
 
 Alembic reads `DATABASE_URL` through `app.config`. From `backend/`:
@@ -413,6 +425,13 @@ The `api` container runs `alembic upgrade head` every time it starts; on an up-t
 The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates the eight tables with their keys, unique, check and partial indexes, and enables the PostgreSQL `pg_trgm` extension used by the trigram search indexes. `alembic downgrade base` removes all of it again. After changing a model, `alembic check` reports whether a new migration is needed.
 
 The second migration, `5d2e8c41a7b9_job_industry.py`, adds `jobs.industry` (indexed, limited to the 13 industry codes, default `other`) and classifies the jobs that already exist; it writes only that column. The `api` container applies it on its next start; `alembic downgrade 98acdef52211` removes the column again.
+
+When the industry rules change, bring stored jobs up to date without a crawl (dry run first; only `jobs.industry` is written):
+
+```bash
+docker compose exec api python -m app.services.reclassify            # list what would change
+docker compose exec api python -m app.services.reclassify --apply    # write it
+```
 
 ## Project structure
 

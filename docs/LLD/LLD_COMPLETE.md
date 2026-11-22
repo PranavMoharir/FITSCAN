@@ -21,7 +21,7 @@ This file combines the ten parts in `docs/LLD/` in order. The text is identical 
 
 ## 1. Introduction and Architecture
 
-> **Status: Planned.** On 18 November 2026 the repository contains documentation only. There is no backend, frontend, test or Docker code yet. Everything in this LLD describes the **intended** implementation, derived from the High-Level Design. Section 1.2 explains the status labels.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 1.1 Purpose of This LLD
 
@@ -170,7 +170,7 @@ Two inconsistencies were found in HLD v1.1. Both were corrected in HLD v1.2 (app
 
 ## 2. Project Structure
 
-> **Status: Planned.** Section 2.1 shows what exists today. Section 2.2 shows the planned layout from HLD §17.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 2.1 What Exists Today
 
@@ -306,7 +306,7 @@ These rules keep the code easy to test and explain (HLD §8.2):
 
 ## 3. Database Design
 
-> **Status: Planned.** Tables, columns, types and constraints are taken from HLD §11. Nothing here adds a column. The schema will be created with Alembic migrations, which the `api` service applies on start-up.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 3.1 Overview
 
@@ -552,7 +552,7 @@ Example `score_breakdown` (shape only):
 
 ## 4. Backend and API Design
 
-> **Status: Planned.** Endpoints, parameters and examples come from HLD §12; the internal layering comes from HLD §8.2. File names follow Part 2.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 4.1 Backend Layers
 
@@ -924,7 +924,7 @@ In the match table, rows follow the candidates in that order, and each candidate
 
 ## 5. Background Jobs and Crawler
 
-> **Status: Planned.** Background processing follows HLD §13, the crawler HLD §8.5, and the extractors HLD §8.6. Code lives in `app/worker`, `app/crawler` and `app/extractors` (Part 2).
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 >
 > Sections 5.1–5.8 cover background job processing; Sections 5.9–5.17 cover the crawler.
 
@@ -1230,17 +1230,17 @@ Every job gets one industry (22 November 2026; ADR-028): Software & IT, AI & Dat
 | A skill whose taxonomy category belongs to the industry (Python: Software & IT; Payroll: Human Resources); Excel, Agile, Scrum and Jira point nowhere, Figma to Design | 1 | 4 |
 | A term of the description (e.g. "patients", "litigation", "supply chain") | 1 | 3 |
 
-Terms match like skills: lower case, whole words, longest first, no overlaps ("data engineer" is one term; "tax" is not found in "taxi"). Each term counts once. The industry with the most points wins if it has at least 3 and strictly more than the next; otherwise the job is `other` (Other / Unclassified), so weak or tied evidence is never forced into an industry.
+Terms match like skills: lower case, whole words, longest first, no overlaps ("data engineer" is one term; "tax" is not found in "taxi"). A title written "Role, specialty" ("Engineer, automotive") is also read in the usual order. Each term counts once. The industry with the most points wins if it has at least 3 and strictly more than the next; otherwise the job is `other` (Other / Unclassified), so weak or tied evidence is never forced into an industry.
 
 **When.** `save_records` classifies each job from the values it will store (the new title; the new description or, if the record has none, the stored one; the new skills or the stored ones) and writes `industry` in the same upsert. `GET /jobs/{id}` recomputes the classification for its `industry_reasons`, e.g. `Title: "nurse" (+3)`, `Skills: BLS, Patient Care (+2)`; if the rules changed since the job was saved, it says so. The rules file is checked when it loads: the 13 codes in order, each term in one industry only, and skill exceptions that name real skills.
 
-**Existing jobs.** Migration `5d2e8c41a7b9` adds the column (default `other`) and classifies the jobs already stored with the same rules, writing only that column. A later change of rules reaches a job when it is crawled again.
+**Existing jobs.** Migration `5d2e8c41a7b9` adds the column (default `other`) and classifies the jobs already stored with the same rules, writing only that column. A later change of rules reaches a job when it is crawled again, or at once with `python -m app.services.reclassify --apply` (a dry run without `--apply`; it writes only `jobs.industry`).
 
 ---
 
 ## 6. Resume Parsing and Skill Extraction
 
-> **Status: Planned.** Resume parsing follows HLD §8.7 and §9.2; skill extraction follows HLD §8.8. Code lives in `app/resumes` and `app/skills` (Part 2). Resume parsing runs inside the `resume` background job (Part 5).
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 6.1 Overview
 
@@ -1413,7 +1413,7 @@ Safeguards:
 
 ## 7. Matching Engine
 
-> **Status: Planned.** The algorithm follows HLD §10, the workflow HLD §9.3 and the decisions ADR-016 to ADR-019. Code lives in `app/matching` (Part 2) and runs inside the `match` background job (Part 5).
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 7.1 When Matching Runs
 
@@ -1649,7 +1649,7 @@ If data grows far beyond assignment size, HLD §10.10 documents the scale path. 
 
 ## 8. Frontend Design
 
-> **Status: Planned.** The pages, components and polling rules come from HLD §8.1. Folders follow Part 2 (`frontend/src`).
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 8.1 Overview
 
@@ -1748,7 +1748,7 @@ Polling stops when every visible job is `completed`, `failed` or `cancelled`. Po
 
 ## 9. Error Handling and Testing
 
-> **Status: Planned.** Error handling follows HLD §13.7, §14 and §15; testing follows HLD §18. No tests exist yet, because no application code exists.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 9.1 Principles
 
@@ -1855,7 +1855,7 @@ The state rules are in Part 5, Section 5.8. What the user sees:
 | API | 422 on invalid input; 202 when creating jobs; upload status rule (202 with some rejected files; 422 `NO_VALID_FILES` with every file's reason when none is accepted); cancel answers 200, 202 or 409 as in Section 5.7; logs with `after_id`; search filters, `max_required_years` (including jobs with no minimum), sorting (allowed fields, 422 for others, missing values last) and pagination; match endpoints return at most 10 results in ranking order; the match export honours the candidate filters; `/skills` returns the standard list shape with every skill on one page; `/health` returns 200, and 503 when the database or Redis is down or does not answer within its short timeout; export content types, headers and CSV formula-injection protection; the error envelope | FastAPI `TestClient` with a test PostgreSQL database; Celery publishing replaced by a stub that records calls |
 | Stale-job check | A `running` job with an old heartbeat becomes `failed`; a `queued` job past the timeout becomes `failed` only when no job has a recent heartbeat; a queued job waiting behind a running job is left alone; a match job about to do its final write is not failed, because it wrote a heartbeat just before; running the check twice changes nothing more | Test database with rows whose timestamps are set in the past |
 | Integration | Upload → resume task → candidate saved; crawl task against the mock transport → jobs saved; match task → top-10 endpoints return the expected order | Tasks called directly (or with Celery's eager mode) against the test database |
-| Real sources | Greenhouse, Lever and career-page fixtures crawled through the API: fields, industries, real listings, original posting and source URL; re-crawls and duplicate postings give no duplicates; real and demo jobs side by side with the `listing`, `industry` and `source` filters; exports keep the source columns; one matching engine for both kinds (every stored score equals the scoring function); demo hosts refused for real-source extractors; the industry migration classifies existing jobs and changes nothing else | The real `crawl` and `match` tasks against the test database |
+| Real sources | Greenhouse, Lever and career-page fixtures crawled through the API: fields, industries, real listings, original posting and source URL; re-crawls and duplicate postings give no duplicates; real and demo jobs side by side with the `listing`, `industry` and `source` filters; exports keep the source columns; one matching engine for both kinds (every stored score equals the scoring function); demo hosts refused for real-source extractors; the industry migration classifies existing jobs and changes nothing else; the reclassify command (dry run, then only `jobs.industry`) | The real `crawl` and `match` tasks against the test database |
 | Automatic re-matching | Change detection for each value matching reads and for the columns it never reads; a crawl that saves new or changed jobs queues one match run with the active weights and `after_crawl`; nothing after an unchanged re-crawl, a cancelled crawl, with no candidates or with `AUTO_REMATCH=false`; a failed crawl that saved jobs still queues one; no second run while one is queued or for the same crawl; concurrent requests are decided one at a time under the lock; a broker failure leaves the crawl's status unchanged; an automatic run never overwrites a newer run's results | The real `crawl` task against a fake job board; `match` publishing recorded, runs started on purpose; threads for the concurrent cases |
 
 **Continuous integration.** `.github/workflows/ci.yml` runs every test above on each push and pull request to `main`: the backend job with Tesseract and a throwaway PostgreSQL service whose only database is `matching_test` (it confirms `current_database()` first and fails if any test is skipped), and the frontend job with `npm ci` and `npm run build`. It needs no secrets and reaches no real database, broker, job site or browser.
@@ -1869,7 +1869,7 @@ The state rules are in Part 5, Section 5.8. What the user sees:
 
 ## 10. End-to-End Workflows
 
-> **Status: Planned.** This part connects the earlier parts into four complete flows. Each step names the module that does the work and where it is explained in detail, so the details are not repeated here.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ### 10.1 The Big Picture
 

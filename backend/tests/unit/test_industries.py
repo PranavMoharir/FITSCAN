@@ -210,3 +210,26 @@ def test_ambiguous_words_are_not_skills(text):
 def test_sap_counts_in_capitals_or_in_a_skill_list():
     assert extract_skills("We run SAP for finance") == ["SAP"]
     assert extract_skills("Skills: excel, sap, procurement") == ["Excel", "Procurement", "SAP"]
+
+
+@pytest.mark.parametrize(("title", "expected"), [
+    ("Engineer, automotive", "engineering"),        # "Role, specialty" is also read in the usual order
+    ("Engineer, communications", "engineering"),
+    ("Designer, fashion/clothing", "design"),
+    ("Neurosurgeon", "healthcare"),
+    ("Consultant Psychiatrist", "healthcare"),
+    ("Dispensing optician", "healthcare"),
+    ("Equities trader", "finance_banking"),
+    ("Chartered loss adjuster", "finance_banking"),
+    ("Licensed conveyancer", "legal"),
+    ("Media planner", "marketing"),
+    ("Newspaper journalist", "other"),              # no media category: never forced into one
+    ("Automotive Sales Executive", "sales_business"),
+])
+def test_inverted_titles_and_common_specialties(title, expected):
+    assert classify(title, None, []).industry == expected
+
+
+def test_a_reordered_title_counts_each_term_once():
+    result = classify("Nurse, registered nurse", None, [])
+    assert result.points["healthcare"] == 3 and [s.term for s in result.signals] == ["nurse"]

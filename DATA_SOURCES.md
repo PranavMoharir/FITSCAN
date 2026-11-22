@@ -85,6 +85,17 @@ curl -X POST http://localhost:8000/background-jobs/crawl -H "Content-Type: appli
 
 The crawler picks each page's extractor from its address, so `extractor` can stay empty.
 
+## Live verification (22 November 2026)
+
+Two public boards were crawled once each into the running stack, after a database backup, with one API request per board:
+
+| Source | Seed URL | Result |
+|---|---|---|
+| Greenhouse: Code for America | `https://boards-api.greenhouse.io/v1/boards/codeforamerica/jobs?content=true` | 10 of 10 jobs saved, company "Code for America", every job linked to its `job-boards.greenhouse.io` posting |
+| Lever: Spotify | `https://api.lever.co/v0/postings/spotify?mode=json&limit=10` | 10 jobs saved (capped with `limit=10`), every job linked to its `jobs.lever.co` posting; company empty, as Lever does not publish it |
+
+Both hosts' robots.txt allowed the requests. All 20 jobs are labelled real and the 108 earlier jobs (Fake Python Jobs) stay demo. The 20 got industries such as Software & IT, AI & Data Science, Marketing, Sales & Business and Finance & Banking; a few ("Engineering Manager", "Program Director") stay Other / Unclassified because the evidence is weak or tied. With `AUTO_REMATCH=false`, each crawl's log says no match run was queued; the new jobs get matches at the next manual recompute.
+
 ## Rules every crawl follows
 
 - **Only sites you may crawl.** Check a site's terms before crawling it. FITSCAN never logs in, never

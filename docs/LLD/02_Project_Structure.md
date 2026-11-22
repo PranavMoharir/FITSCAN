@@ -1,6 +1,6 @@
 # 2. Project Structure
 
-> **Status: Planned.** Section 2.1 shows what exists today. Section 2.2 shows the planned layout from HLD §17.
+> **Status: Implemented** (Phases 1–8, completed 22 November 2026). This part was written as the design before the code; the code follows it, and later additions are marked with their dates.
 
 ## 2.1 What Exists Today
 
