@@ -81,6 +81,14 @@ def test_match_weights_from_env(monkeypatch):
     assert s.match_weights.location == 5
 
 
+def test_api_docs_are_on_by_default_and_can_be_turned_off(monkeypatch):
+    """Local development keeps /docs; production sets API_DOCS_ENABLED=false."""
+    assert _settings(monkeypatch).api_docs_enabled is True
+    assert _settings(monkeypatch, API_DOCS_ENABLED="false").api_docs_enabled is False
+    with pytest.raises(ValidationError):
+        _settings(monkeypatch, API_DOCS_ENABLED="sometimes")
+
+
 def test_auto_rematch_is_on_by_default_and_can_be_turned_off(monkeypatch):
     assert _settings(monkeypatch).auto_rematch is True
     assert _settings(monkeypatch, AUTO_REMATCH="false").auto_rematch is False

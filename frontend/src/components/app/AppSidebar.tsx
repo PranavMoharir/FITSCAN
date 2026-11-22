@@ -106,7 +106,7 @@ export function SidebarContent({ collapsed = false, onNavigate }: { collapsed?: 
         </ul>
       </nav>
       <div className="shrink-0 space-y-0.5 border-t border-border px-3 py-3">
-        <FooterLink icon={BookOpen} label="API docs" href={API_DOCS_URL} collapsed={collapsed} />
+        {API_DOCS_URL && <FooterLink icon={BookOpen} label="API docs" href={API_DOCS_URL} collapsed={collapsed} />}
         <FooterLink icon={ArrowLeft} label="Back to website" to="/" collapsed={collapsed} onNavigate={onNavigate} />
       </div>
     </div>

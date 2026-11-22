@@ -110,6 +110,7 @@ services:
         # Vite reads these at build time; rebuild the image after changing them.
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
         VITE_POLL_INTERVAL_MS: ${VITE_POLL_INTERVAL_MS:-2000}
+        VITE_API_DOCS_ENABLED: ${VITE_API_DOCS_ENABLED:-true}
     ports:
       - "5173:5173"
     healthcheck:

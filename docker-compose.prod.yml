@@ -1,0 +1,81 @@
+# Production override for a public server (README "Deploy publicly", deploy/README.md):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# `docker compose up` without this file is unchanged: local development keeps ports 8000 and
+# 5173, the API docs and the mock site. With it:
+# - Caddy (service `proxy`) is the only published service, on ports 80 and 443: HTTPS with a
+#   Let's Encrypt certificate, a password for everything except GET /api/health, security
+#   headers, rate limits, request size limits and no-store caching for API responses
+#   (deploy/caddy/Caddyfile). The API and the frontend are no longer published on the host;
+#   PostgreSQL, Redis and the worker never are.
+# - The API's documentation (/docs, /redoc, /openapi.json) is switched off, and the frontend is
+#   built without links to it.
+# - The browser reaches the API at https://<FITSCAN_DOMAIN>/api (same origin as the frontend).
+# - The mock job site does not run (it starts only with --profile demo), and the crawler's
+#   private-address exception for it is empty unless CRAWLER_PRIVATE_HOST_ALLOWLIST is set.
+# - Its own project name, so its volumes are fitscan-prod_pgdata, fitscan-prod_uploads, ...: a
+#   production stack always starts with a new, empty database and can never reuse the volumes of
+#   a local development stack (project `fitscan`), even when started on the same machine.
+# Needs Docker Compose 2.24.4 or newer (`!reset`).
+
+name: fitscan-prod
+
+services:
+  proxy:
+    build:
+      context: ./deploy/caddy
+    environment:
+      FITSCAN_DOMAIN: ${FITSCAN_DOMAIN:?Set FITSCAN_DOMAIN in .env}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER:?Set BASIC_AUTH_USER in .env}
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH:?Set BASIC_AUTH_HASH in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates and the ACME account: keep this volume
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      # Caddy's admin API listens on 127.0.0.1:2019 inside the container only.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  api:
+    ports: !reset []
+    environment:
+      API_DOCS_ENABLED: "false"
+      CORS_ORIGINS: https://${FITSCAN_DOMAIN}
+      CRAWLER_PRIVATE_HOST_ALLOWLIST: ${CRAWLER_PRIVATE_HOST_ALLOWLIST:-}
+      # Only Caddy can reach the API (it is not published), so Uvicorn may trust its
+      # X-Forwarded-For header: the API's access log then shows the real client address.
+      FORWARDED_ALLOW_IPS: "*"
+
+  worker:
+    environment:
+      API_DOCS_ENABLED: "false"
+      CRAWLER_PRIVATE_HOST_ALLOWLIST: ${CRAWLER_PRIVATE_HOST_ALLOWLIST:-}
+
+  frontend:
+    build:
+      args:
+        VITE_API_BASE_URL: https://${FITSCAN_DOMAIN}/api
+        VITE_API_DOCS_ENABLED: "false"
+    ports: !reset []
+
+  mock-site:
+    profiles: ["demo"]
+
+volumes:
+  caddy_data:
+  caddy_config:

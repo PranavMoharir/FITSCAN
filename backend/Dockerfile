@@ -36,7 +36,8 @@ FROM deps AS api
 COPY . .
 USER app
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# --no-server-header: responses do not announce the server software ("server: uvicorn").
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-server-header"]
 
 
 FROM deps AS worker

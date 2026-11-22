@@ -124,4 +124,4 @@ def get_background_job_logs(
     db: Session = Depends(get_db),
 ) -> LogList:
     items, next_after_id = service.get_logs(db, background_job_id, after_id=after_id, min_level=level)
-    return LogList(items=[LogLine.model_validate(i, from_attributes=True) for i in items], next_after_id=next_after_id)
+    return LogList(items=[LogLine.of(i) for i in items], next_after_id=next_after_id)

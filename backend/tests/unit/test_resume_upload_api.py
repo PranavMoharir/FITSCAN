@@ -85,7 +85,7 @@ def test_job_details_never_show_file_names_even_from_older_rows():
     upload_id = str(uuid.uuid4())
     old = BackgroundJob(type="resume", params={"files": [{"upload_id": upload_id, "file": "Asha_Verma_CV.pdf",
                                                           "size_bytes": 10}]})
-    assert public_params(old) == {"files": [{"upload_id": upload_id, "size_bytes": 10}]}
+    assert public_params(old) == {"files": [{"upload_id": upload_id[:8], "size_bytes": 10}]}
     crawl = BackgroundJob(type="crawl", params={"seed_url": "https://example.com/", "max_depth": 1})
     assert public_params(crawl) == crawl.params  # other job types are shown as they are
 

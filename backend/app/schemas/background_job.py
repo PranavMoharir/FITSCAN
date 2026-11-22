@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, mod
 
 from app.config import check_weight_values, get_settings
 from app.models import BackgroundJob
+from app.services.redaction import redact_context, redact_params, redact_text
 
 MAX_DEPTH_LIMIT = 10
 MAX_ALLOWED_DOMAINS = 20
@@ -131,18 +132,11 @@ class ResumeJobCreated(BackgroundJobCreated):
     rejected_files: list[RejectedFileInfo]
 
 
-_PUBLIC_FILE_KEYS = ("upload_id", "stored_file", "size_bytes")
-
-
 def public_params(job: BackgroundJob) -> dict[str, Any] | None:
-    """The job's parameters as the API shows them. For a resume job, each file shows only its
-    upload ID, storage name and size, even if an older row still held more (e.g. a file name)."""
-    params = job.params
-    if job.type != "resume" or not isinstance(params, dict) or not isinstance(params.get("files"), list):
-        return params
-    files = [{key: item.get(key) for key in _PUBLIC_FILE_KEYS if key in item}
-             for item in params["files"] if isinstance(item, dict)]
-    return {**params, "files": files}
+    """The job's parameters as the API shows them (app/services/redaction.py). A resume job shows each
+    file's short upload reference and size only, never a name or storage name, even from older rows; a
+    crawl's seed URL and allowed domains lose credentials, secret query values and internal hosts."""
+    return redact_params(job.type, job.params)
 
 
 class BackgroundJobSummary(BackgroundJobCreated):
@@ -169,7 +163,7 @@ class BackgroundJobDetail(BackgroundJobSummary):
 
     @classmethod
     def of(cls, job: BackgroundJob, **extra: Any):
-        return super().of(job, params=public_params(job), error_message=job.error_message, **extra)
+        return super().of(job, params=public_params(job), error_message=redact_text(job.error_message), **extra)
 
 
 class BackgroundJobList(BaseModel):
@@ -190,6 +184,12 @@ class LogLine(BaseModel):
     level: LogLevel
     message: str
     context: dict[str, Any] | None = None
+
+    @classmethod
+    def of(cls, line: Any) -> "LogLine":
+        """A stored log line as the API shows it: message and context redacted (app/services/redaction.py)."""
+        return cls(log_id=line.log_id, created_at=line.created_at, level=line.level,
+                   message=redact_text(line.message) or "", context=redact_context(line.context))
 
 
 class LogList(BaseModel):

@@ -228,9 +228,11 @@ function MobileNav() {
               <Cta to={APP_PATH} arrow className="w-full sm:w-auto">
                 Get started
               </Cta>
-              <Cta href={API_DOCS_URL} variant="secondary" className="w-full sm:w-auto">
-                API docs
-              </Cta>
+              {API_DOCS_URL && (
+                <Cta href={API_DOCS_URL} variant="secondary" className="w-full sm:w-auto">
+                  API docs
+                </Cta>
+              )}
             </div>
           </nav>
         </Dialog.Content>

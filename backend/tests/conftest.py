@@ -28,6 +28,13 @@ if not _names_test_database(os.environ.get("DATABASE_URL")):
     os.environ["DATABASE_URL"] = PLACEHOLDER_DATABASE_URL
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 
+# Deployment switches must not change what the tests check. A developer's .env (for example
+# AUTO_REMATCH=false) or a production container (API_DOCS_ENABLED=false) would otherwise switch off
+# behaviour the tests expect. Environment variables take precedence over .env, so these pin the
+# documented defaults for the whole run; a test that needs another value sets it itself.
+os.environ["AUTO_REMATCH"] = "true"
+os.environ["API_DOCS_ENABLED"] = "true"
+
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 

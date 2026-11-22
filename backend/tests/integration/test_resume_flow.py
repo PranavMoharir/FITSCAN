@@ -88,15 +88,67 @@ def skills_of(candidate_id) -> set[str]:
                                    .where(CandidateSkill.candidate_id == candidate_id)).scalars())
 
 
+CELERY_TRACE_LOGGER = "celery.app.trace"
+
+
+def record_text(record: logging.LogRecord) -> str:
+    """A captured log record as checked by the privacy test.
+
+    Celery's own success line reports how long the task took ("Task resume[...] succeeded in
+    0.1221599669988791s: 'completed'"). That duration is a random number, and its digits can include
+    a phone-number fragment such as 99887, which made the test fail now and then. Only that one field
+    is replaced; the task name, id, return value and every other log record are still checked.
+    """
+    if record.name == CELERY_TRACE_LOGGER and isinstance(record.args, dict) and "runtime" in record.args:
+        return str(record.msg) % {**record.args, "runtime": "<runtime>"}
+    return record.getMessage()
+
+
+def find_leaks(texts: list[str]) -> list[tuple[str, str]]:
+    return [(secret, text) for text in texts for secret in PRIVATE if secret.lower() in text.lower()]
+
+
 def assert_no_personal_data(job_ids, caplog=None):
     texts = []
     for job_id in job_ids:
         texts += [line.message + " " + json.dumps(line.context or {}) for line in logs(job_id)]
         texts.append(job_row(job_id).error_message or "")
     if caplog is not None:
-        texts += [record.getMessage() for record in caplog.records]
-    leaks = [(secret, text) for text in texts for secret in PRIVATE if secret.lower() in text.lower()]
-    assert leaks == []
+        texts += [record_text(record) for record in caplog.records]
+    assert find_leaks(texts) == []
+
+
+# --- The privacy check itself (no database needed) --------------------------------------------------
+
+
+def _celery_success(runtime: float, *, name: str = "resume", task_id: str = "7b6a5948-3726-4155-8a9b-cdef01234567",
+                    return_value: str = "'completed'") -> logging.LogRecord:
+    """A record exactly as Celery's tracer logs a finished task (celery.app.trace: info(LOG_SUCCESS, {...}))."""
+    from celery.app.trace import LOG_SUCCESS
+    context = {"id": task_id, "name": name, "return_value": return_value, "runtime": runtime, "args": "()", "kwargs": "{}"}
+    return logging.LogRecord(CELERY_TRACE_LOGGER, logging.INFO, __file__, 1, LOG_SUCCESS, (context,), None)
+
+
+def test_a_celery_task_duration_is_not_mistaken_for_a_phone_number():
+    """The flaky failure, reproduced: this duration contains 99887, a fragment of a test phone number."""
+    record = _celery_success(0.1221599669988791)
+    assert "99887" in record.getMessage()  # what the old check compared, so it reported a leak
+    assert find_leaks([record_text(record)]) == []
+    assert record_text(record) == "Task resume[7b6a5948-3726-4155-8a9b-cdef01234567] succeeded in <runtime>s: 'completed'"
+
+
+def test_personal_data_in_any_other_field_of_a_celery_record_is_still_found():
+    for record in (_celery_success(0.5, return_value="'Asha Verma, +91 98765 43210'"),
+                   _celery_success(0.5, name="Rahul-Mehta.pdf"),
+                   _celery_success(0.5, task_id="meera_iyer@example.com")):
+        assert find_leaks([record_text(record)]), record.getMessage()
+
+
+def test_the_same_digits_in_any_other_log_record_are_still_found():
+    """Only Celery's duration field is excluded, never a number written by FITSCAN or another logger."""
+    for name in ("app.worker.tasks", "celery.worker", CELERY_TRACE_LOGGER):
+        record = logging.LogRecord(name, logging.INFO, __file__, 1, "phone %s", ("+91 99887 76655",), None)
+        assert ("99887", "phone +91 99887 76655") in find_leaks([record_text(record)])
 
 
 # --- The whole pipeline ---------------------------------------------------------------------------
@@ -321,10 +373,14 @@ def test_broker_down_marks_the_job_failed_and_removes_the_stored_files(env, monk
     assert list(env["dir"].iterdir()) == []
 
 
-def test_unknown_skill_terms_are_reported_without_personal_details(env):
+def test_unknown_skill_terms_are_counted_but_never_logged(env):
+    """Words from a resume never reach a log line, not even unknown skill terms: only their counts."""
     person = replace(PEOPLE["asha"], skills="Python, Looker Studio, Verma Toolkit, Go")
     job_id = upload(env, ("Asha_Verma_CV.pdf", resume_pdfs.one_column(person), PDF)).json()["background_job_id"]
-    assert "Skill-like terms not in the taxonomy: looker studio (1)" in messages(job_id)
+    lines = messages(job_id)
+    assert ("Skill-like terms not in the taxonomy: 1 distinct term, 1 occurrence "
+            "(terms from resumes are not logged).") in lines
+    assert not any("looker" in line.lower() or "toolkit" in line.lower() for line in lines)
     assert_no_personal_data([job_id])
 
 

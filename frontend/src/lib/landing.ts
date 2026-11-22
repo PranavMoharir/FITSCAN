@@ -16,13 +16,13 @@ import {
   Workflow,
 } from 'lucide-react'
 
-import { API_BASE_URL, API_DOCS_URL } from '@/api/client'
+import { API_BASE_URL, API_DOCS_ENABLED, API_DOCS_URL } from '@/api/client'
 
 /** The application entry: the dashboard. */
 export const APP_PATH = '/app'
-/** FastAPI's interactive API reference and the raw OpenAPI document. */
+/** FastAPI's interactive API reference and the raw OpenAPI document; null when the API does not serve them. */
 export { API_DOCS_URL }
-export const OPENAPI_URL = `${API_BASE_URL}/openapi.json`
+export const OPENAPI_URL: string | null = API_DOCS_ENABLED ? `${API_BASE_URL}/openapi.json` : null
 
 /** Section ids, used by the navigation, the footer and the sections themselves. */
 export const SECTION = {
@@ -91,13 +91,18 @@ export const productMenu: { groups: MenuGroup[]; feature: MenuFeature } = {
 
 export const resourcesMenu: { groups: MenuGroup[]; feature: MenuFeature } = {
   groups: [
-    {
-      label: 'Developers',
-      links: [
-        { title: 'API reference', description: 'Interactive documentation for every endpoint', icon: BookOpen, href: API_DOCS_URL, external: true },
-        { title: 'OpenAPI schema', description: 'The machine-readable API contract', icon: Braces, href: OPENAPI_URL, external: true },
-      ],
-    },
+    // The Developers links point at the API documentation, so the group exists only when the API serves it.
+    ...(API_DOCS_URL && OPENAPI_URL
+      ? [
+          {
+            label: 'Developers',
+            links: [
+              { title: 'API reference', description: 'Interactive documentation for every endpoint', icon: BookOpen, href: API_DOCS_URL, external: true },
+              { title: 'OpenAPI schema', description: 'The machine-readable API contract', icon: Braces, href: OPENAPI_URL, external: true },
+            ],
+          },
+        ]
+      : []),
     {
       label: 'Platform',
       links: [

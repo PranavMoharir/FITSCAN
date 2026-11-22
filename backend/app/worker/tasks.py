@@ -383,8 +383,11 @@ def run_resume_job(job_id: uuid.UUID) -> str:
                         f"({counts.created} new candidates, {counts.updated} updated, "
                         f"{counts.duplicates} duplicates skipped, {counts.failed} failed).")
         if unmatched:
-            top = ", ".join(f"{term} ({count})" for term, count in unmatched.most_common(10))
-            run.log("INFO", f"Skill-like terms not in the taxonomy: {top}")
+            # Counts only: the terms are words from resumes, and resume text never goes into a log.
+            run.log("INFO", "Skill-like terms not in the taxonomy: "
+                            f"{_plural(len(unmatched), 'distinct term')}, "
+                            f"{_plural(sum(unmatched.values()), 'occurrence')} (terms from resumes are not logged).",
+                    unmatched_terms=len(unmatched))
     except SoftTimeLimitExceeded:
         run.log("ERROR", "Time limit exceeded; the job was stopped. Candidates saved so far are kept.")
         run.finish("failed", "Time limit exceeded.")

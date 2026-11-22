@@ -12,6 +12,7 @@ from app.db.session import SessionLocal, session_scope
 from app.main import app
 from app.models import BackgroundJob, BackgroundJobLog
 from app.services import background_jobs as service
+from app.services.redaction import INTERNAL_HOST as INTERNAL
 from app.worker import progress, tasks
 
 CRAWL = {"seed_url": "https://jobs.example.com/", "max_depth": 2, "max_pages": 50}
@@ -196,6 +197,60 @@ def test_cancel_unknown_job(api):
 
 
 # --- Logs --------------------------------------------------------------------------------------------
+
+
+def test_job_details_and_logs_are_redacted_but_stored_unchanged(api):
+    """GET /background-jobs/{id} and /logs never show credentials, internal hosts, IP addresses, paths, stack
+    traces, personal data or storage names; progress stays readable; the stored rows are not changed."""
+    raw_params = {"seed_url": "https://admin:hunter2@mock-site:8080/static/index.html?token=s3cr3t", "extractor": None,
+                  "max_depth": 2, "max_pages": 30, "allowed_domains": ["mock-site"]}
+    raw_error = ("Seed URL https://admin:hunter2@mock-site:8080/static/index.html?token=s3cr3t cannot be crawled: "
+                 "mock-site resolves to a private or reserved address.")
+    with session_scope() as session:
+        job = BackgroundJob(type="crawl", status="failed", params=raw_params, error_message=raw_error)
+        session.add(job)
+        session.flush()
+        job_id = job.background_job_id
+        progress.add_log(session, job_id, "INFO", "Crawl started: http://mock-site:8080/static/index.html "
+                         "(max_depth 2, max_pages 30, allowed domains mock-site)", url="http://mock-site:8080/static/index.html")
+        progress.add_log(session, job_id, "INFO", "Loaded robots.txt for mock-site", host="mock-site", crawl_delay=1.0)
+        progress.add_log(session, job_id, "WARNING", "Connection error on attempt 1/3 for http://10.0.0.8/jobs, "
+                         "retrying in 1.0 s", attempt=1)
+        progress.add_log(session, job_id, "ERROR", 'Failed /data/uploads/x.pdf for asha.verma@example.com +91 98765 43210\n'
+                         'Traceback (most recent call last):\n  File "/app/app/worker/tasks.py", line 1')
+        progress.add_log(session, job_id, "INFO", "Fetched https://jobs.example.com/careers (200): 3 jobs extracted, "
+                         "3 saved (3 new, 0 updated), 5 new links", url="https://jobs.example.com/careers",
+                         upload_id="f00dbabe-2b3c-4d4e-9f5a-6b7c8d9e0f1a", stored_file="f00dbabe.pdf", jobs_saved=3)
+
+    detail = api.get(f"/background-jobs/{job_id}").json()
+    assert detail["params"] == {"seed_url": f"https://{INTERNAL}/static/index.html?token=[redacted]", "extractor": None,
+                                "max_depth": 2, "max_pages": 30, "allowed_domains": [INTERNAL]}
+    assert detail["error_message"] == (f"Seed URL https://{INTERNAL}/static/index.html?token=[redacted] cannot be "
+                                       f"crawled: {INTERNAL} resolves to a private or reserved address.")
+    items = api.get(f"/background-jobs/{job_id}/logs").json()["items"]
+    assert [i["message"] for i in items] == [
+        f"Crawl started: http://{INTERNAL}/static/index.html (max_depth 2, max_pages 30, allowed domains {INTERNAL})",
+        f"Loaded robots.txt for {INTERNAL}",
+        "Connection error on attempt 1/3 for http://[IP address]/jobs, retrying in 1.0 s",
+        "Failed [path] for [email] [number] [details removed]",
+        "Fetched https://jobs.example.com/careers (200): 3 jobs extracted, 3 saved (3 new, 0 updated), 5 new links",
+    ]
+    assert [i.get("context") for i in items] == [
+        {"url": f"http://{INTERNAL}/static/index.html"}, {"host": INTERNAL, "crawl_delay": 1.0}, {"attempt": 1}, None,
+        {"url": "https://jobs.example.com/careers", "upload_id": "f00dbabe", "jobs_saved": 3}]
+    shown = str(detail) + str(items)
+    for secret in ("hunter2", "admin", "s3cr3t", "mock-site", "10.0.0.8", "/data/uploads", "asha", "98765",
+                   "Traceback", "/app/app", "stored_file", "2b3c-4d4e"):
+        assert secret not in shown, secret
+
+    # Only what the API shows is redacted: the stored record is exactly what the worker wrote.
+    stored = load(job_id)
+    assert stored.params == raw_params and stored.error_message == raw_error
+    with SessionLocal() as session:
+        stored_logs = session.execute(select(BackgroundJobLog).where(BackgroundJobLog.background_job_id == job_id)
+                                      .order_by(BackgroundJobLog.log_id)).scalars().all()
+    assert stored_logs[1].message == "Loaded robots.txt for mock-site" and stored_logs[1].context["host"] == "mock-site"
+    assert stored_logs[4].context["stored_file"] == "f00dbabe.pdf"
 
 
 def test_logs_are_timestamped_ordered_and_incremental(api):

@@ -34,7 +34,8 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 | Continuous integration: GitHub Actions runs every backend test (with PostgreSQL and Tesseract) and the frontend build on each push and pull request to `main` | |
 | Search and detail: `GET /jobs`, `/jobs/{id}`, `/candidates`, `/candidates/{id}`, `/skills`; filters, sorting, paging | |
 | Exports: jobs, candidates and the match table as CSV or JSON, streamed, with formula-injection protection | |
-| `GET /health`, OpenAPI docs at `/docs`, one error envelope for every error | |
+| `GET /health`, OpenAPI docs at `/docs` (switched off in production with `API_DOCS_ENABLED=false`), one error envelope for every error | |
+| Public deployment, prepared but not yet deployed: a production Compose override with a Caddy proxy (HTTPS, password, rate and size limits, security headers) for a free Oracle Cloud VM ([Deploy publicly](#deploy-publicly)) | |
 | Frontend: public landing page at `/` (sample data only, no API calls) and the application at `/app` (dashboard, background jobs, jobs, candidates, matching, skills, exports) | |
 | Sample outputs in [`samples/`](samples/): the demo jobs, the 5 synthetic candidates and their top-10 match table, as CSV and JSON | |
 
@@ -233,7 +234,7 @@ The API only validates, stores and reads. All slow work (crawling, PDF parsing a
 | De-duplication: jobs by their apply URL, candidates by file hash and email | A listing card and its detail page become one job; a re-uploaded resume is skipped | 020 |
 | Real or demo is derived from the job's source, never stored as a separate flag | An invented job can never be shown as a real opening | 028 |
 | Routes without a version prefix (`/candidates/{id}/matches`, not `/api/v1/…`) | The paths match the brief exactly | 027 |
-| No user accounts or authentication | Out of scope for this assignment; run FITSCAN on a trusted machine ([Security controls](#security-controls)) | none |
+| No user accounts or authentication in the application | Out of scope for this assignment. Run FITSCAN on a trusted machine, or publicly behind the production proxy, which asks for a password over HTTPS ([Deploy publicly](#deploy-publicly)) | none |
 
 ## How crawling works
 
@@ -257,7 +258,7 @@ An upload is a background job, like a crawl (LLD Part 6).
 
 - **Total size first.** A middleware counts the bytes of an upload request while it streams in. Over `MAX_UPLOAD_REQUEST_MB` (default 50), the request is stopped at once with 422: a declared `Content-Length` is refused before anything is read, and a chunked request is cut off at the limit, so at most that much is ever spooled. The connection is then closed. curl sends nothing at all (it waits for `100 Continue`).
 - **API checks, file by file.** The size is counted while the file is copied in chunks, so an oversized file is never read into memory as a whole. The first bytes must be `%PDF-`; the extension and content type are checked but never trusted on their own. A rejected file does not stop the others.
-- **Storage.** An accepted file is saved as `<upload_id>.pdf`, where `upload_id` is a random UUID, on the `uploads` volume, with a small `<upload_id>.json` that holds its original name for the worker. The job's parameters list only upload IDs and storage names, so `GET /background-jobs/{id}` never shows file names; after parsing, the original name is kept only as `candidates.source_file`, never as a path. No endpoint serves the uploads volume. The API image has no PDF or OCR libraries; it only checks and stores.
+- **Storage.** An accepted file is saved as `<upload_id>.pdf`, where `upload_id` is a random UUID, on the `uploads` volume, with a small `<upload_id>.json` that holds its original name for the worker. The job's parameters list only upload IDs and storage names, and `GET /background-jobs/{id}` shows only each file's short upload reference and size, never a file name or storage name; after parsing, the original name is kept only as `candidates.source_file`, never as a path. No endpoint serves the uploads volume. The API image has no PDF or OCR libraries; it only checks and stores.
 - **Worker, one file at a time.** It computes the file's SHA-256; a file already saved is logged as "duplicate file, skipped". PyMuPDF opens the file: a corrupt, password-protected or too-long (`PDF_MAX_PAGES`) file fails with a clear message, and the next file is processed.
 - **Text.** PyMuPDF returns text blocks with coordinates and font sizes. A two-column page (two groups of blocks side by side, with an empty gutter between them) is read left column first, then right column; anything else top to bottom, left to right. pdfplumber extracts tables, and replaces PyMuPDF's text on a page that looks garbled.
 - **OCR.** A page with almost no text (`OCR_MIN_TEXT_CHARS`) but an image is rendered at 300 DPI and read by Tesseract (`OCR_LANGUAGE`, `OCR_TIMEOUT_SECONDS` per page). If OCR is disabled, missing, times out or finds nothing, the page is flagged; a resume without usable text is flagged and no candidate is created. `parsed_with_ocr` is true when any page's text came from OCR.
@@ -366,7 +367,7 @@ For each candidate, the top 3 jobs, in the order of `GET /candidates/{id}/matche
 - **Crawling.** An interrupted crawl cannot be resumed (deferred), and a lost task is not re-sent. A site needs its own extractor, a Greenhouse or Lever board, or schema.org `JobPosting` data. Company career pages are verified only with a saved test page: the one live attempt (Shopify careers) found no jobs. A crawl's allowed domain is a whole host, so a crawl seeded at a careers page can wander to other pages of that host. Lever postings do not name the company, and Greenhouse publishes no salaries ([`DATA_SOURCES.md`](DATA_SOURCES.md)).
 - **Demo data.** Fake Python Jobs descriptions, companies and towns are generated, so their skills and locations do not mean much; real postings are the better test of matching quality.
 - **Duplicates.** Two people who share an email address would be merged into one candidate (ADR-020).
-- **Security and privacy.** There are no user accounts; FITSCAN is meant for a trusted machine or network. Uploaded resumes stay on the `uploads` volume until the retention command is run.
+- **Security and privacy.** There are no user accounts; FITSCAN is meant for a trusted machine or network. A public deployment is protected by one shared password at the proxy (HTTP Basic authentication over HTTPS), not by per-user logins. Uploaded resumes stay on the `uploads` volume until the retention command is run.
 
 ## Time spent
 
@@ -473,19 +474,42 @@ All settings are environment variables, documented in [`.env.example`](.env.exam
 - One `.env` in the repository root serves Docker Compose, the backend and Vite.
 - Inside Docker, `docker-compose.yml` overrides `DATABASE_URL`, `REDIS_URL` and `UPLOAD_DIR` with container values (host names `db` and `redis`).
 - `AUTO_REMATCH` (default `true`) queues a match run after a crawl that saved new or changed jobs (see "Compute matches").
+- `API_DOCS_ENABLED` (default `true`) serves the API documentation at `/docs`, `/redoc` and `/openapi.json`; with `false` those paths do not exist. `VITE_API_DOCS_ENABLED` (default `true`, build time) shows the frontend's links to them. Production sets both to `false`.
 - `VITE_API_BASE_URL` and `VITE_POLL_INTERVAL_MS` are compiled into the frontend at build time. After changing them, rebuild: `docker compose up --build frontend`.
 - Host-side URLs use `127.0.0.1`, not `localhost`: on Windows, psycopg can stall trying IPv6 (`::1`) first.
+
+## Deploy publicly
+
+FITSCAN can run around the clock on one free **Oracle Cloud Always Free** Arm VM (Ubuntu 24.04, `VM.Standard.A1.Flex`, 2 OCPUs, 4 GB), with a free DuckDNS host name and a Let's Encrypt certificate. It's the only free option checked that runs every service (the Celery worker included) and keeps its data. Render, Vercel, Fly.io, Railway, Koyeb and Google's e2-micro were ruled out; [`deploy/README.md`](deploy/README.md) gives the reasons, the limits and every step. On the server, after cloning:
+
+```bash
+cp deploy/production.env.example .env      # then fill in the host name, the login's bcrypt hash and a database password
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+[`docker-compose.prod.yml`](docker-compose.prod.yml) changes only what production needs; plain `docker compose up` stays as it is:
+
+- A Caddy proxy ([`deploy/caddy/`](deploy/caddy/)) is the only published service, on ports 80 and 443. It obtains the certificate, redirects HTTP to HTTPS, asks for a password for everything except `GET /api/health`, adds security headers, limits request rates and sizes, and marks API responses `no-store`. The frontend is at `/` and the API at `/api/`, so they share one origin.
+- The API, the frontend, PostgreSQL, Redis and the worker are not published. The API runs with `API_DOCS_ENABLED=false`, and the frontend is built without docs links.
+- The mock site runs only with `--profile demo`.
+- The stack runs as its own Compose project, `fitscan-prod`, so its database volume is always new and separate from a local `fitscan` stack.
+
+The server gets its own, empty database. Fill it with synthetic data only: the demo job sites and the generated resumes from `tests/resume_pdfs.py`. Never copy a local database, backup or upload there.
+
+**Cost:** $0 within the Always Free allowance (2 OCPUs and 12 GB in total, 200 GB of storage, 10 TB of outbound data a month). A Free Tier account that is never upgraded can't create paid resources; charges are possible only after upgrading to Pay As You Go. Sign-up needs a card for verification. Oracle may reclaim a VM that stays idle for a week, and it halved the Arm allowance in June 2026, so keep database backups.
 
 ## Security controls
 
 - **No secrets in the repository.** `.env` is git-ignored; `.env.example` holds placeholders only. Containers run as non-root users.
-- **Exposed ports.** Only the API (8000) and the UI (5173) are published. PostgreSQL and Redis are reachable only inside Compose (the development override publishes them on `127.0.0.1` only).
+- **Exposed ports.** Locally, only the API (8000) and the UI (5173) are published. PostgreSQL and Redis are reachable only inside Compose (the development override publishes them on `127.0.0.1` only). In production only the proxy is published (80 and 443).
 - **API.** Every query and body is validated by Pydantic; unknown query parameters are a 422; one error envelope; bounded page sizes; queries use bound parameters (literal `%` and `_` in searches); CORS allows only `CORS_ORIGINS`.
+- **Job details and logs.** `GET /background-jobs/{id}` and `/logs` show a sanitised copy (`app/services/redaction.py`); the stored rows are unchanged. URLs lose credentials, fragments and secret query values. Internal host names and IP addresses, file-system paths, stack traces, e-mail addresses, phone numbers and `password=`-style secrets are replaced. Upload and candidate IDs are shortened to 8 characters, and storage names are dropped. Counts, levels, public page URLs, retries, robots.txt results and failure summaries stay visible.
 - **Crawler.** Allow-listed hosts only; private, loopback, link-local and reserved addresses refused on every redirect hop and browser request (DNS checked); robots.txt and `Crawl-delay` obeyed; per-host rate limit, bounded retries, 5 MB page limit; no logins or access controls are bypassed; demo-site jobs can never be stored as real.
 - **Resumes.** Size limits per file and per request (checked while streaming), `%PDF-` signature check, page limit, OCR time limit, UUID storage names (never the user's file name), a read-only uploads volume for the worker, logs without names or contact details, and a retention command for old uploads.
 - **Exports.** Streamed; CSV cells that could start a formula are neutralised.
 - **Worker.** One bad item never stops a job; stale jobs are failed by heartbeat checks; a match run never overwrites newer results; manual and automatic match requests share one database lock.
-- **Out of scope.** There are no user accounts or authentication: run FITSCAN on a trusted machine or network.
+- **Production.** `docker-compose.prod.yml` puts a Caddy proxy in front: HTTPS, a password for everything except the health check, no API docs, rate and size limits, `no-store` caching for API responses and security headers ([Deploy publicly](#deploy-publicly)). The API sends no `Server` header, and resume jobs log only counts of unknown skill terms, never the words.
+- **Out of scope.** There are no user accounts in the application: run FITSCAN on a trusted machine or network, or behind the production proxy.
 
 ## Database migrations
 
@@ -514,6 +538,8 @@ docker compose exec api python -m app.services.reclassify --apply    # write it
 ```text
 ├── docker-compose.yml        # all services
 ├── docker-compose.dev.yml    # development only: publishes db and redis on 127.0.0.1
+├── docker-compose.prod.yml   # production override: Caddy proxy in front, nothing else published
+├── deploy/                   # public deployment: guide, Caddy proxy (Dockerfile, Caddyfile), production .env template
 ├── .env.example              # documented configuration, no secrets
 ├── DATA_SOURCES.md           # where jobs and resumes come from, terms and robots.txt checks
 ├── AI_USAGE.md               # how AI tools were used

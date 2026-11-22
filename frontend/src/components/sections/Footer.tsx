@@ -29,13 +29,15 @@ export function Footer() {
                   How it works
                 </a>
               </li>
-              <li>
-                <a href={API_DOCS_URL} target="_blank" rel="noreferrer" className={linkClass}>
-                  API docs
-                  <ArrowUpRight className="size-3.5" aria-hidden="true" />
-                  <span className="sr-only">(opens in a new tab)</span>
-                </a>
-              </li>
+              {API_DOCS_URL && (
+                <li>
+                  <a href={API_DOCS_URL} target="_blank" rel="noreferrer" className={linkClass}>
+                    API docs
+                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                    <span className="sr-only">(opens in a new tab)</span>
+                  </a>
+                </li>
+              )}
               <li>
                 <Link to={APP_PATH} className={linkClass}>
                   Open the app

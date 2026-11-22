@@ -58,6 +58,9 @@ class Settings(BaseSettings):
 
     # Frontend <-> API wiring: only these origins may call the API from a browser.
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+    # Interactive API documentation (/docs, /redoc, /openapi.json). On for local development;
+    # production sets API_DOCS_ENABLED=false so the API's map is not published.
+    api_docs_enabled: bool = True
 
     # Resume uploads and PDF checks (LLD §6.2-6.3)
     upload_dir: Path = Path("uploads")

@@ -1,0 +1,120 @@
+# FITSCAN's public entry point (docker-compose.prod.yml, deploy/README.md).
+#
+# Caddy is the only service published on the server. It gets and renews the HTTPS certificate
+# for FITSCAN_DOMAIN automatically (Let's Encrypt) and redirects HTTP to HTTPS. Everything except
+# GET /api/health needs the password; the frontend is served at / and the API at /api/ (same
+# origin, so the browser sends the password with every API call and no CORS is involved).
+#
+# Environment (from the server's .env, through docker-compose.prod.yml):
+#   FITSCAN_DOMAIN   the host name only, e.g. fitscan-demo.duckdns.org
+#   BASIC_AUTH_USER  the login name
+#   BASIC_AUTH_HASH  the bcrypt hash of the password (caddy hash-password); never the password itself
+{
+	# rate_limit comes from the caddy-ratelimit plugin (deploy/caddy/Dockerfile). Placed before
+	# basic_auth, so requests without the password count too and guessing is slowed down.
+	order rate_limit before basic_auth
+
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 5m # a 50 MB resume upload over a slow connection
+			write 10m # long CSV/JSON exports keep streaming for a while
+			idle 2m
+		}
+	}
+}
+
+# Security headers, for normal responses and for the ones Caddy writes itself (401, 413, 429).
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Cross-Origin-Opener-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+		defer
+	}
+}
+
+{$FITSCAN_DOMAIN} {
+	encode zstd gzip
+
+	# --- Rate limits, per client address ----------------------------------------------------
+	rate_limit {
+		zone per_client {
+			key {remote_host}
+			events 600
+			window 1m
+		}
+		zone writes {
+			match {
+				method POST
+			}
+			key {remote_host}
+			events 30
+			window 1m
+		}
+		zone uploads {
+			match {
+				path /api/background-jobs/resume
+			}
+			key {remote_host}
+			events 10
+			window 10m
+		}
+	}
+
+	# --- Password for everything except the health check -------------------------------------
+	@protected not path /api/health
+	basic_auth @protected {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	# --- Request size limits: the API's own limit for uploads is 50 MiB per request ------------
+	@upload path /api/background-jobs/resume
+	request_body @upload {
+		max_size 52MiB
+	}
+	@not_upload not path /api/background-jobs/resume
+	request_body @not_upload {
+		max_size 1MiB
+	}
+
+	# --- Security headers on every response ---------------------------------------------------
+	import security_headers
+
+	# Responses Caddy writes itself (password prompt, size and rate limits) get them too.
+	handle_errors {
+		import security_headers
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
+
+	# --- The API under /api/ (the prefix is removed before the request reaches it) -------------
+	handle_path /api/* {
+		# The API runs with API_DOCS_ENABLED=false; the proxy refuses these paths as well.
+		@docs path /docs /docs/* /redoc /openapi.json
+		respond @docs 404
+
+		# Candidate data, logs and exports must never be stored by a browser or a cache.
+		header {
+			Cache-Control "no-store"
+			defer
+		}
+
+		reverse_proxy api:8000 {
+			flush_interval -1 # stream exports to the browser as they are produced
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 2m
+			}
+		}
+	}
+
+	# --- Everything else: the frontend (landing page and the application) ----------------------
+	handle {
+		reverse_proxy frontend:5173
+	}
+}

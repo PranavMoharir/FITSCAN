@@ -207,5 +207,11 @@ export function exportUrl(entity: 'jobs' | 'candidates' | 'matches', format: Exp
   return `${API_BASE_URL}/exports/${entity}${queryString({ ...filters, format })}`
 }
 
-/** The API's interactive reference and its machine-readable contract. */
-export const API_DOCS_URL = `${API_BASE_URL}/docs`
+/**
+ * Whether the API serves its interactive documentation. Production builds set VITE_API_DOCS_ENABLED=false
+ * (the API then runs with API_DOCS_ENABLED=false), so no page links to documentation that is not there.
+ */
+export const API_DOCS_ENABLED = import.meta.env.VITE_API_DOCS_ENABLED !== 'false'
+
+/** The API's interactive reference, or null when the API does not serve it. */
+export const API_DOCS_URL: string | null = API_DOCS_ENABLED ? `${API_BASE_URL}/docs` : null

@@ -1379,7 +1379,7 @@ Example: under "Requirements: Python, FastAPI, PostgreSQL. Docker is a plus." an
 Every score is built from extracted skills, so extraction mistakes matter more than any scoring detail (HLD §8.8):
 
 1. **Labelled examples.** The job and resume test fixtures are labelled by hand with their expected skills (and, for jobs, the requirement level). Tests report **precision** (the share of extracted skills that are correct) and **recall** (the share of labelled skills that were found). The README records the measured values; no target is set in advance.
-2. **Unmatched-term report.** Each crawl and resume job logs the most frequent skill-like terms that matched no alias, as terms and counts only. Reviewing this list is how the taxonomy grows; aliases are added by hand, never automatically.
+2. **Unmatched-term report.** Each crawl job logs the most frequent skill-like terms that matched no alias, as terms and counts only. A resume job logs only how many such terms it found, never the terms, because they come from resume text. Reviewing the crawl list is how the taxonomy grows; aliases are added by hand, never automatically.
 3. **Hand-check feedback.** Every extraction error found during the README's 5-candidate hand check becomes a new labelled test case.
 
 ### 6.10 Upload Retention
