@@ -82,11 +82,11 @@ def test_permanent_4xx_is_not_retried():
     assert clock.sleeps == []
 
 
-def test_non_html_content_is_skipped():
+def test_content_that_is_not_html_or_json_is_skipped():
     site = FakeSite({f"{BASE}/file.pdf": (200, "%PDF-1.7", {"content-type": "application/pdf"})}, robots=ROBOTS_OK)
     fetcher, _, _ = make_fetcher(site)
     result = fetcher.fetch_page(f"{BASE}/file.pdf")
-    assert (result.outcome, result.reason) == ("skipped", "not HTML (application/pdf)")
+    assert (result.outcome, result.reason) == ("skipped", "not HTML or JSON (application/pdf)")
 
 
 def test_oversized_page_fails():

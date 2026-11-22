@@ -12,9 +12,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, TypeAdapter, field_validator, model_validator
 
+from app.extractors.registry import get_registry
+from app.industries import INDUSTRIES
 from app.schemas.common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, ExportFormat, Number, SearchText, SortOrder
 
 JobType = Literal["full_time", "part_time", "contract", "internship", "temporary", "unknown"]
+Industry = Literal[INDUSTRIES]  # "other" = Other / Unclassified (LLD §5.18)
+# real: from a real-source extractor (a company career page or job board); demo: invented jobs of a demo site.
+Listing = Literal["real", "demo"]
 SalaryPeriod = Literal["year", "month", "week", "day", "hour"]
 _HTTP_URL = TypeAdapter(HttpUrl)
 
@@ -80,8 +85,20 @@ class JobFilterParams(BaseModel):
     max_required_years: Decimal | None = Field(
         None, ge=0, le=50, description="Jobs asking for at most this many years, plus jobs with no minimum (LLD-6)",
         examples=[3])
+    listing: Listing | None = Field(None, description="real: openings from real company sources; demo: invented jobs "
+                                                      "from the demo sites")
+    industry: Industry | None = Field(None, description="The industry code; 'other' is Other / Unclassified")
+    source: str | None = Field(None, description="The source (extractor) name, as GET /sources lists them",
+                               examples=["greenhouse"])
     sort: JobSort = Field("posted_date", description="posted_date (default, newest first) or title")
     order: SortOrder | None = Field(None, description="asc or desc; default desc for posted_date, asc for title")
+
+    @field_validator("source")
+    @classmethod
+    def _known_source(cls, value: str | None) -> str | None:
+        if value is not None and value not in get_registry().names:
+            raise ValueError(f"unknown source; choose one of {get_registry().names}")
+        return value
 
 
 class JobSearchParams(JobFilterParams):
@@ -113,8 +130,11 @@ class JobSummary(BaseModel):
     required_skills: list[str]
     nice_to_have_skills: list[str]
     min_experience_years: Number | None
-    apply_url: str
-    source: str
+    apply_url: str = Field(description="The original posting")
+    source: str = Field(description="The extractor that collected the job (GET /sources)")
+    listing: Listing = Field(description="real, or demo for invented jobs from a demo site (never a real opening)")
+    industry: Industry = Field(description="Industry code from the title, skills and description; 'other' is "
+                                           "Other / Unclassified")
 
 
 class JobDetail(JobSummary):
@@ -127,7 +147,7 @@ class JobDetail(JobSummary):
         "required_skills": ["Django", "FastAPI", "PostgreSQL", "Pytest", "Python"],
         "nice_to_have_skills": ["Docker", "Kubernetes", "Redis"], "min_experience_years": 3,
         "apply_url": "http://mock-site:8080/static/jobs/backend-python-developer.html", "source": "mock_static",
-        "is_remote": False, "description": "We build APIs with FastAPI and PostgreSQL. 3+ years of experience.",
+        "listing": "demo", "industry": "software_it", "is_remote": False, "description": "We build APIs with FastAPI and PostgreSQL. 3+ years of experience.",
         "salary_text": "₹9,00,000 – ₹14,00,000 a year",
         "source_url": "http://mock-site:8080/static/jobs/backend-python-developer.html",
         "created_at": "2026-11-18T14:22:50Z", "updated_at": "2026-11-19T11:59:00Z"}]})
@@ -135,9 +155,16 @@ class JobDetail(JobSummary):
     is_remote: bool
     description: str | None
     salary_text: str | None
-    source_url: str | None
+    source_url: str | None = Field(description="The page or API response the job was read from")
     created_at: datetime
     updated_at: datetime
+
+
+class JobView(JobDetail):
+    """GET /jobs/{id}: the stored job, and why it has its industry."""
+
+    industry_reasons: list[str] = Field(description="The evidence for the industry, e.g. 'Title: \"nurse\" (+3)'; "
+                                                    "for 'other', why no industry was chosen")
 
 
 class JobList(BaseModel):
@@ -150,7 +177,7 @@ class JobList(BaseModel):
                    "posted_date": "2026-11-03", "required_skills": ["Django", "FastAPI", "PostgreSQL", "Pytest", "Python"],
                    "nice_to_have_skills": ["Docker", "Kubernetes", "Redis"], "min_experience_years": 3,
                    "apply_url": "http://mock-site:8080/static/jobs/backend-python-developer.html",
-                   "source": "mock_static"}],
+                   "source": "mock_static", "listing": "demo", "industry": "software_it"}],
         "total": 1, "page": 1, "page_size": 20}]})
 
     items: list[JobSummary]

@@ -34,10 +34,23 @@ def fields(response) -> list[str]:
         ("q=" + "x" * 201, "query.q"),
         ("company=acme", "query.company"),         # not a filter of the approved design
         ("remote=true", "query.remote"),
+        ("listing=fake", "query.listing"),         # real or demo only
+        ("listing=REAL", "query.listing"),
+        ("industry=it", "query.industry"),         # industry codes only (software_it, healthcare, ...)
+        ("industry=Healthcare", "query.industry"),
+        ("source=indeed", "query.source"),         # only the sources of GET /sources
+        ("export=all", "query.export"),
     ],
 )
 def test_invalid_job_search(client, query, field):
     assert field in fields(client.get(f"/jobs?{query}"))
+
+
+@pytest.mark.parametrize("path", ["/jobs", "/exports/jobs?format=csv&"])
+def test_new_job_filters_are_validated_in_search_and_export(client, path):
+    separator = "&" if "?" in path else "?"
+    query = f"{path}{separator}listing=maybe&industry=space&source=nope".replace("&&", "&")
+    assert set(fields(client.get(query))) >= {"query.listing", "query.industry", "query.source"}
 
 
 @pytest.mark.parametrize(
@@ -95,7 +108,8 @@ def _enum(schema: dict) -> list | None:
 DOCUMENTED_EXPORTS = {
     "/exports/jobs": {
         "required": {"format"},
-        "params": {"format", "q", "skill", "location", "job_type", "max_required_years", "sort", "order"},
+        "params": {"format", "q", "skill", "location", "job_type", "max_required_years", "listing", "industry", "source",
+                   "sort", "order"},
         "sort": ["posted_date", "title"], "default_sort": "posted_date",
     },
     "/exports/candidates": {
@@ -162,6 +176,7 @@ def test_new_routes_are_documented(client):
         assert operation["summary"] and "422" in operation["responses"] or path == "/skills", path
     assert "text/csv" in paths["/exports/matches"]["get"]["responses"]["200"]["content"]
     query = {p["name"] for p in paths["/jobs"]["get"]["parameters"]}
-    assert query == {"q", "skill", "location", "job_type", "max_required_years", "sort", "order", "page", "page_size"}
+    assert query == {"q", "skill", "location", "job_type", "max_required_years", "listing", "industry", "source", "sort",
+                     "order", "page", "page_size"}
     query = {p["name"] for p in paths["/candidates"]["get"]["parameters"]}
     assert query == {"q", "skill", "city", "sort", "order", "page", "page_size"}

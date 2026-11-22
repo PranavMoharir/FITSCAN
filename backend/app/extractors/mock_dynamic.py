@@ -13,7 +13,11 @@ from app.extractors.mock_static import job_from_element
 
 class MockDynamicExtractor(BaseExtractor):
     name = "mock_dynamic"
+    label = "Demo: FITSCAN mock site (JavaScript page)"
+    description = "Invented jobs that the mock site adds with JavaScript (rendered in a headless browser). Never real openings."
+    demo = True
     domains = ("mock-site",)
+    example_seed = "http://mock-site:8080/dynamic/index.html"
     ready_selector = "#jobs .job-card"  # the browser waits until the script has added the jobs
 
     def matches(self, url: str) -> bool:

@@ -79,7 +79,7 @@ def test_column_count_and_key_types(session):
         "WHERE table_schema = 'public' AND table_name <> 'alembic_version'"
     )).all()
     types = {(t, c): d for t, c, d in rows}
-    assert len(types) == 77  # every LLD column, nothing more
+    assert len(types) == 78  # every LLD column (jobs.industry included), nothing more
     assert types[("matches", "score")] == "double precision"
     assert types[("matches", "text_similarity")] == "double precision"
     for key in [("jobs", "job_id"), ("candidates", "candidate_id"), ("background_jobs", "background_job_id")]:

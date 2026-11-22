@@ -19,9 +19,9 @@ import type {
   ExportFormat,
   FieldError,
   HealthResponse,
-  JobDetail,
   JobFilters,
   JobList,
+  JobView,
   JobMatches,
   LogLevel,
   LogList,
@@ -29,6 +29,7 @@ import type {
   MatchWeightsInfo,
   ResumeJobCreated,
   SkillList,
+  SourceList,
 } from '@/types/api'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '')
@@ -167,8 +168,8 @@ export function searchJobs(query: JobFilters & Paging = {}, signal?: AbortSignal
   return get<JobList>(`/jobs${queryString({ ...query })}`, signal)
 }
 
-export function getJob(id: string, signal?: AbortSignal): Promise<JobDetail> {
-  return get<JobDetail>(`/jobs/${encodeURIComponent(id)}`, signal)
+export function getJob(id: string, signal?: AbortSignal): Promise<JobView> {
+  return get<JobView>(`/jobs/${encodeURIComponent(id)}`, signal)
 }
 
 export function getJobMatches(id: string, signal?: AbortSignal): Promise<JobMatches> {
@@ -189,6 +190,11 @@ export function getCandidateMatches(id: string, signal?: AbortSignal): Promise<C
 
 export function listSkills(signal?: AbortSignal): Promise<SkillList> {
   return get<SkillList>('/skills', signal)
+}
+
+/** GET /sources: the job sources the crawler supports (real first, then demo). */
+export function listSources(signal?: AbortSignal): Promise<SourceList> {
+  return get<SourceList>('/sources', signal)
 }
 
 // --- Exports (plain download links, LLD §8.4) -------------------------------------------------

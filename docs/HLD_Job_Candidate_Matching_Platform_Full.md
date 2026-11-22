@@ -190,7 +190,7 @@ The brief lets the developer choose real sources, generated fake data or both, f
 
 - **[Decision]** Include an optional **mock job site** container with both a static HTML page and a JavaScript-rendered page. The demo needs "one static, one dynamic" scrape, and a local mock site makes that reproducible without depending on a third-party website. The brief's suggestion of Fake Python Jobs can serve as the static real-world source.
 - **[Decision]** Generate fake resumes with varied layouts (one-column, two-column, skills in a table and at least one scanned, image-only resume), as the brief suggests. The generation script is a development tool, not part of the runtime system.
-- **[Open]** The final choice of sources is recorded in `DATA_SOURCES.md` during implementation.
+- **[Decision, 22 November 2026]** Real jobs come from official company career pages that publish schema.org `JobPosting` data and from the public job-board APIs of Greenhouse and Lever; demo jobs come from the mock site and Fake Python Jobs. Both kinds go through the same pipeline and matching engine, and demo listings are always labelled demo (Section 8.6). `DATA_SOURCES.md` lists the sources, what each gives, their terms and limitations.
 
 ## 5. Functional Requirements
 
@@ -231,6 +231,8 @@ Priorities are copied from the brief. Rows tagged **[Decision]** are derived req
 | FR-EX-02 | Fetch with plain HTTP by default. | Must |
 | FR-EX-03 | Use a headless browser (Playwright) only when the page needs JavaScript. | Must |
 | FR-EX-04 | Produce job records with: job_id, title, company, location, job_type, salary (if given), posted_date, description (clean text), required_skills, nice_to_have_skills (if found), min_experience_years (if found), apply_url, source. | Must |
+| FR-EX-05 | Every job says whether it is a real or a demo listing, and keeps its original posting and the page it was read from; a demo job is never shown as a real opening. | **[Decision]** |
+| FR-EX-06 | Every job has an industry, or Other / Unclassified, with the evidence behind it. | **[Decision]** |
 
 ### 5.4 Resume Parsing and OCR
 
@@ -489,10 +491,10 @@ flowchart TB
 |---|---|---|
 | `/` | Landing page | Public FITSCAN marketing page: what the platform does, an interactive product preview built on sample data (no API calls), and links into the application. Unknown paths redirect here. |
 | `/app` | Dashboard | Entry point into the application, linked from the landing page. Counts of jobs, candidates and skills; background jobs by status with live progress; recent runs; the last completed run of each step; system status (API, PostgreSQL and Redis, from `GET /health`). |
-| `/background-jobs` | Background jobs | Table of background jobs with type, status badge, progress bar and timestamps. "New crawl" form (seed URL, max_depth, max_pages, allowed domains). "Upload resumes" dialog (multiple files). "Recompute matches" button. Cancel button for active jobs. |
+| `/background-jobs` | Background jobs | Table of background jobs with type, status badge, progress bar and timestamps. "New crawl" form: choose a source (a job board needs only its board name), then seed URL, max_depth, max_pages, allowed domains. "Upload resumes" dialog (multiple files). "Recompute matches" button. Cancel button for active jobs. |
 | `/background-jobs/:id` | Background job detail | Parameters, counters (succeeded, failed), live log viewer with level filter. |
-| `/jobs` | Jobs | Searchable, paginated table (title, company, location, job type, posted date, required skills). Export CSV/JSON. |
-| `/jobs/:id` | Job detail | Job fields and a list of the top 10 candidates, each with score, matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level, and explanation. |
+| `/jobs` | Jobs | Searchable, paginated table (title, company, industry, source, location, job type, posted date, required skills; a "Demo" badge on demo listings and a link to the original posting on real ones). Filters include real or demo, industry and source. Export CSV/JSON. |
+| `/jobs/:id` | Job detail | Job fields, its industry with the evidence, its source (real or demo listing, where it was read from, the original posting) and a list of the top 10 candidates, each with score, matched (tinted, with a check) and missing (dashed, with a minus) skill badges by level, and explanation. |
 | `/candidates` | Candidates | Searchable, paginated table (name, current title, city, years of experience, skills, OCR flag). Export CSV/JSON. "Export match table" (CSV/JSON): the top 10 jobs of the candidates matching the current filters (Section 12.6). |
 | `/candidates/:id` | Candidate detail | Candidate fields and a list of the top 10 jobs, with the same match presentation. |
 | `/matching` | Matching | Scoring formula, latest match run (live while it runs), "Recompute matches", and a search to open any candidate's or job's top matches. |
@@ -669,6 +671,8 @@ Browser fetches obey the same robots.txt, allow-list and rate-limit rules. **[De
 4. **Pydantic `JobRecord` validation.** Invalid records are logged and skipped, not saved.
 5. **Upsert** by de-duplication key (Section 11.6).
 
+**Real and demo sources, JSON job boards [Decision, 22 November 2026].** Besides HTML pages, an extractor may read a JSON job-board API (`formats = ("json",)`): the fetcher accepts `application/json`, and a JSON response reaches only an extractor that reads JSON. `greenhouse` reads Greenhouse's public Job Board API and `lever` Lever's public Postings API, one request per board; `generic` reads official career pages' schema.org `JobPosting` data. Each extractor declares `demo = True` if its site's jobs are invented (`mock_static`, `mock_dynamic`, `fake_python_jobs`). A job is a real listing only if its source is a real-source extractor; the crawler takes jobs from a demo site's host only through its demo extractor and drops any other, so a demo job is never stored as a real one. `GET /sources` lists the extractors with their kind and how to build a seed URL. Robots.txt, the allow-list, the private-address guard and the rate limit apply to every source unchanged.
+
 ### 8.7 Resume Parsing (PyMuPDF, pdfplumber, Tesseract)
 
 | Aspect | Description |
@@ -766,6 +770,10 @@ An own list is chosen for the baseline because it is small, reviewable and testa
 3. **Hand-check feedback.** Every extraction error found during the README's 5-candidate hand check becomes a new labelled example, so it stays fixed.
 
 **Search normalization.** A skill filter typed by the user ("js") is passed through the same normalizer before querying (`JavaScript`).
+
+**Non-IT skills [Decision, 22 November 2026].** The taxonomy also lists well-defined skills of finance, marketing, sales, human resources, design, operations, healthcare, education, engineering and legal work (for example Financial Modeling, SEO, Payroll, Patient Care, Lesson Planning, AutoCAD, Litigation), with specific aliases only, so jobs and candidates outside IT have skills to match.
+
+**Industry classification [Decision, 22 November 2026].** Every job gets one industry: Software & IT, AI & Data Science, Finance & Banking, Marketing, Sales & Business, Human Resources, Design, Operations & Supply Chain, Healthcare, Education, Engineering, Legal, or Other / Unclassified. Explainable rules (`app/industries/industries.json`) give 3 points per title term, 1 per skill whose taxonomy category belongs to the industry and 1 per description term (capped per kind); the industry with at least 3 points and a strict lead wins, anything weaker or tied is Other / Unclassified. Industry is separate from skill extraction and never changes a match score. It is computed when a job is saved and stored in `jobs.industry` (Section 11), so the Jobs filter, counts and exports stay plain SQL; the job page recomputes and shows the evidence.
 
 ### 8.9 Matching Engine
 
@@ -1258,6 +1266,7 @@ erDiagram
 | source | text | Brief | Extractor or site name, for example `fake_python_jobs`. |
 | is_remote | boolean | impl | Used by location fit. |
 | source_url | text | impl | Page the job was extracted from. |
+| industry | text, CHECK in the 13 codes, default `other` | impl (22 November 2026) | Set when the job is saved (Section 8.8); indexed for the Jobs filter. |
 | dedup_key | text, UNIQUE | impl | See Section 11.6. |
 | background_job_id | UUID FK, nullable | impl | Which crawl produced or last updated the job. |
 | created_at, updated_at | timestamptz | impl | |
@@ -1376,7 +1385,7 @@ erDiagram
 | `matches (job_id, score DESC)` | Top 10 candidates for a job. |
 | `job_skills (skill_id)`, `candidate_skills (skill_id)` | Search by skill. |
 | Trigram (GIN, `pg_trgm`) on `jobs.title`, `jobs.company`, `candidates.name`, `candidates.current_title` | Case-insensitive substring search. |
-| `jobs (posted_date)`, `jobs (location)`, `candidates (city)` | Filtering and sorting. |
+| `jobs (posted_date)`, `jobs (location)`, `jobs (industry)`, `candidates (city)` | Filtering and sorting. |
 | `background_jobs (status, created_at)` | Background-job list and active-job polling. |
 | `background_job_logs (background_job_id, log_id)` | Incremental log retrieval. |
 
@@ -1429,7 +1438,7 @@ The example is a resume upload in which no file was accepted, so the whole reque
 | Get one background job (status, progress) | GET | `/background-jobs/{id}` | Must |
 | Cancel a background job | POST | `/background-jobs/{id}/cancel` | Must |
 | Retrieve logs (incremental via `after_id`) | GET | `/background-jobs/{id}/logs` | Must |
-| Search jobs | GET | `/jobs` | Must |
+| Search jobs (filters include `listing` real or demo, `industry` and `source`) | GET | `/jobs` | Must |
 | Get one job | GET | `/jobs/{id}` | **[Decision]** supports job page |
 | Get job matches (top candidates) | GET | `/jobs/{id}/matches` | Must (exact path) |
 | Search candidates | GET | `/candidates` | Must |
@@ -1439,6 +1448,7 @@ The example is a resume upload in which no file was accepted, so the whole reque
 | Export candidates (CSV or JSON) | GET | `/exports/candidates?format=json` | Must |
 | Export matches (CSV or JSON, top N per candidate) | GET | `/exports/matches?format=csv&top=10` | Must |
 | List canonical skills (for filters) | GET | `/skills` | **[Decision]** |
+| List supported job sources (real and demo) | GET | `/sources` | **[Decision]** supports the crawl form and the source filter |
 | Health check (database and Redis reachability) | GET | `/health` | **[Decision]** for Docker health checks |
 | OpenAPI document and interactive docs | GET | `/openapi.json`, `/docs` | Must (generated by FastAPI) |
 

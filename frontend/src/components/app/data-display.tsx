@@ -4,8 +4,22 @@ import { Download } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { SkillChip } from '@/components/landing/SkillChip'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+/** A demo listing is an invented job from a demo site: always marked, never shown as a real opening. */
+export function DemoBadge({ className }: { className?: string }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn('h-5 shrink-0 rounded-full border-dashed border-foreground/30 px-2 text-[11px] font-medium text-muted-foreground', className)}
+      title="An invented job from a demo site, not a real opening"
+    >
+      Demo
+    </Badge>
+  )
+}
 
 /** A definition list of label and value rows. */
 export function Facts({ items, className }: { items: [string, ReactNode][]; className?: string }) {

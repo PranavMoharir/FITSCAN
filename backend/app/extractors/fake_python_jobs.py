@@ -19,7 +19,11 @@ def _without_label(text: str | None, label: str) -> str | None:
 
 class FakePythonJobsExtractor(BaseExtractor):
     name = "fake_python_jobs"
+    label = "Demo: Fake Python Jobs (Real Python)"
+    description = "A public practice site with generated jobs and companies. Never real openings."
+    demo = True
     domains = ("realpython.github.io",)
+    example_seed = "https://realpython.github.io/fake-jobs/"
 
     def matches(self, url: str) -> bool:
         return super().matches(url) and "/fake-jobs" in url

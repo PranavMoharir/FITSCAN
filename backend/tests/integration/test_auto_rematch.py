@@ -89,7 +89,8 @@ def test_a_change_matching_never_reads_does_not_count(session, change):
 
 # --- The trigger, end to end -------------------------------------------------------------------
 
-ORIGIN = "http://mock-site:8080"
+# A real-source board (not the demo mock-site host: the crawler takes jobs there only through its demo extractors).
+ORIGIN = "http://careers-board:8080"
 SEED = f"{ORIGIN}/board/index.html"
 PAGE_2 = f"{ORIGIN}/board/page2.html"
 
@@ -114,6 +115,7 @@ def board(*postings: dict, links: list[str] = (), on_request=None) -> FakeSite:
 def crawl_env(app_db, fast_crawler, monkeypatch):
     """A crawl task runs at once against state["site"]; a published match task is only recorded."""
     state = {"site": board(posting()), "published": [], "broker_down": False}
+    monkeypatch.setattr(fast_crawler, "crawler_private_host_allowlist", ["careers-board"])  # served by the fake site
     monkeypatch.setattr(fetcher, "create_client", lambda timeout: state["site"].client())
 
     def publish(name, job_id):

@@ -132,6 +132,8 @@ Example: under "Requirements: Python, FastAPI, PostgreSQL. Docker is a plus." an
 
 **Search.** A skill filter typed by the user goes through the same normalizer, so a search for "js" finds `JavaScript`.
 
+**Non-IT skills** (22 November 2026). The taxonomy also holds 67 skills of finance, marketing, sales, human resources, design, operations, healthcare, education, engineering and legal work, in categories of those names (for example Financial Modeling, GAAP, SEO, Salesforce, Payroll, UX Design, Supply Chain Management, Patient Care, BLS, Lesson Planning, AutoCAD, Litigation). Aliases are specific on purpose: no bare `cad` (Canadian dollars), `plc` (a company suffix) or `aml` (a diagnosis), and `sap` counts only as "SAP" or in a skill list, like `go` or `r`. The same skills serve job descriptions and resumes, so candidates outside IT can be matched too.
+
 ## 6.9 Extraction Quality Checks
 
 Every score is built from extracted skills, so extraction mistakes matter more than any scoring detail (HLD §8.8):

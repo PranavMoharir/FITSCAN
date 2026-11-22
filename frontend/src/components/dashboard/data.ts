@@ -6,23 +6,30 @@ import type { BackgroundJobStatus, BackgroundJobSummary, BackgroundJobType } fro
 export interface DashboardTotals {
   /** null when that request failed (shown as a dash, never as 0). */
   jobs: number | null
+  /** Jobs from real company sources, and invented jobs from demo sites (GET /jobs?listing=...). */
+  realJobs: number | null
+  demoJobs: number | null
   candidates: number | null
   skills: number | null
   categories: number | null
 }
 
-/** GET /jobs?page_size=1, GET /candidates?page_size=1 (their `total`) and GET /skills. */
+/** GET /jobs?page_size=1 (all, real, demo), GET /candidates?page_size=1 (their `total`) and GET /skills. */
 export async function loadTotals(signal: AbortSignal): Promise<DashboardTotals> {
-  const [jobs, candidates, skills] = await Promise.allSettled([
+  const [jobs, candidates, skills, real, demo] = await Promise.allSettled([
     searchJobs({ page_size: 1 }, signal),
     searchCandidates({ page_size: 1 }, signal),
     listSkills(signal),
+    searchJobs({ listing: 'real', page_size: 1 }, signal),
+    searchJobs({ listing: 'demo', page_size: 1 }, signal),
   ])
   const all = [jobs, candidates, skills]
   if (all.every((r) => r.status === 'rejected')) throw (jobs as PromiseRejectedResult).reason
   const skillItems = skills.status === 'fulfilled' ? skills.value.items : null
   return {
     jobs: jobs.status === 'fulfilled' ? jobs.value.total : null,
+    realJobs: real.status === 'fulfilled' ? real.value.total : null,
+    demoJobs: demo.status === 'fulfilled' ? demo.value.total : null,
     candidates: candidates.status === 'fulfilled' ? candidates.value.total : null,
     skills: skills.status === 'fulfilled' ? skills.value.total : null,
     categories: skillItems ? new Set(skillItems.map((s) => s.category ?? 'Other')).size : null,

@@ -143,15 +143,16 @@ def _response(entity: str, export_format: str, body: Iterator[bytes]) -> Streami
 
 JOB_COLUMNS = ["job_id", "title", "company", "location", "job_type", "is_remote", "salary_min", "salary_max",
                "salary_currency", "salary_period", "salary_text", "posted_date", "min_experience_years",
-               "required_skills", "nice_to_have_skills", "apply_url", "source", "source_url", "description",
-               "created_at", "updated_at"]
+               "required_skills", "nice_to_have_skills", "apply_url", "source", "listing", "source_url", "industry",
+               "description", "created_at", "updated_at"]
 
 
 def _job_cells(row) -> list:
     return [row.job_id, row.title, row.company, row.location, row.job_type, row.is_remote, row.salary_min,
             row.salary_max, row.salary_currency, row.salary_period, row.salary_text, row.posted_date,
             row.min_experience_years, joined(row.required_skills or []), joined(row.nice_to_have_skills or []),
-            row.apply_url, row.source, row.source_url, row.description, row.created_at, row.updated_at]
+            row.apply_url, row.source, search.listing_of(row.source), row.source_url, row.industry, row.description,
+            row.created_at, row.updated_at]
 
 
 def export_jobs(params: JobExportParams) -> StreamingResponse:

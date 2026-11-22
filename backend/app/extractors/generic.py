@@ -92,6 +92,10 @@ def _to_raw_job(posting: dict, page_url: str) -> RawJob:
 
 class GenericJsonLdExtractor(BaseExtractor):
     name = "generic"
+    label = "Company career page"
+    description = ("Official career pages that describe each opening with schema.org JobPosting data, as many do "
+                   "for search engines. Also the fallback for pages no other extractor handles.")
+    example_seed = "https://careers.example.com/jobs"
 
     def parse(self, url: str, html: str) -> ExtractionResult:
         soup = soup_of(html)

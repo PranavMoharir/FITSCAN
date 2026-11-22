@@ -97,6 +97,7 @@ erDiagram
 | source | text | NOT NULL | Extractor or site name, for example `fake_python_jobs`. |
 | is_remote | boolean | | Used by location fit. |
 | source_url | text | | The page the job was extracted from. |
+| industry | text | NOT NULL, default `other`; CHECK in (`software_it`, `ai_data`, `finance_banking`, `marketing`, `sales_business`, `human_resources`, `design`, `operations_supply_chain`, `healthcare`, `education`, `engineering`, `legal`, `other`) | Set by the crawler when the job is saved (Part 5, Section 5.18); added 22 November 2026 by migration `5d2e8c41a7b9`, which also classifies the jobs that already exist (only this column is written). |
 | dedup_key | text | UNIQUE | See Section 3.6. |
 | background_job_id | UUID | **FK** → `background_jobs`, nullable | The crawl that created or last updated the job. |
 | created_at, updated_at | timestamptz | | |
@@ -230,7 +231,7 @@ Example `score_breakdown` (shape only):
 | `matches (job_id, score DESC)` | Top 10 candidates for a job |
 | `job_skills (skill_id)`, `candidate_skills (skill_id)` | Search by skill |
 | Trigram GIN indexes (`pg_trgm`) on `jobs.title`, `jobs.company`, `candidates.name`, `candidates.current_title` | Case-insensitive text search |
-| `jobs (posted_date)`, `jobs (location)`, `candidates (city)` | Filters and sorting |
+| `jobs (posted_date)`, `jobs (location)`, `jobs (industry)`, `candidates (city)` | Filters and sorting |
 | `background_jobs (status, created_at)` | Background-job list and polling |
 | `background_job_logs (background_job_id, log_id)` | Fetching only new log lines |
 

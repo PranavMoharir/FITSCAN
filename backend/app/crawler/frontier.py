@@ -23,7 +23,7 @@ from typing import Protocol
 from pydantic import ValidationError
 
 from app.crawler.browser import RenderError
-from app.crawler.fetcher import Fetcher
+from app.crawler.fetcher import JSON_TYPES, Fetcher
 from app.crawler.pipeline import BuiltRecord, SaveResult, build_record
 from app.crawler.urls import host_of, is_allowed_host, normalize_url
 from app.extractors.base import BaseExtractor
@@ -44,7 +44,7 @@ class CrawlStats:
     pages_processed: int = 0   # URLs taken from the queue (the job's progress)
     pages_succeeded: int = 0
     pages_failed: int = 0
-    pages_skipped: int = 0     # robots.txt, non-HTML, blocked host, duplicate after redirect
+    pages_skipped: int = 0     # robots.txt, not HTML or JSON, blocked host, duplicate after redirect
     pages_discovered: int = 0  # URLs queued so far, the seed included
     jobs_extracted: int = 0
     jobs_saved: int = 0
@@ -150,6 +150,12 @@ class Crawler:
         self._visited.add(final_url)
 
         extractor = self.registry.select(final_url, self.settings.extractor)
+        kind = "json" if result.content_type in JSON_TYPES else "html"
+        if kind not in extractor.formats:  # e.g. a JSON response where an HTML page was expected
+            stats.pages_skipped += 1
+            log("INFO", f"Skipped {final_url}: {kind.upper()} content, which the {extractor.name} extractor does not read",
+                url=final_url, depth=depth)
+            return
         rendered = False
         try:
             html = result.html or ""
@@ -166,7 +172,15 @@ class Crawler:
             log("WARNING", f"Could not extract from {final_url}: {type(exc).__name__}", url=final_url, depth=depth)
             return
 
-        records = self._build_records(extraction.jobs, final_url, extractor)
+        jobs = extraction.jobs
+        demo_site = self.registry.demo_site(final_url)
+        if jobs and demo_site is not None and not extractor.demo:
+            # A demo site's invented jobs are taken only by its demo extractor, so they stay labelled demo.
+            log("WARNING", f"Dropped {len(jobs)} jobs found on {final_url} by the {extractor.name} extractor: it is a "
+                           f"demo site, whose jobs are taken only by the {demo_site.name} extractor, so they are never "
+                           "shown as real openings.", url=final_url, depth=depth)
+            jobs = []
+        records = self._build_records(jobs, final_url, extractor)
         saved = self.sink.save(records) if records else SaveResult()  # database errors end the job
         stats.jobs_extracted += len(extraction.jobs)
         stats.jobs_saved += saved.saved

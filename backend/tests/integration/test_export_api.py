@@ -152,7 +152,9 @@ def test_jobs_csv_columns_and_values(api, data):
 
 def test_jobs_json_items_are_the_detail_responses(api, data):
     exported = api.get("/exports/jobs?format=json").json()
-    assert exported == [api.get(f"/jobs/{item['job_id']}").json() for item in exported]
+    details = [api.get(f"/jobs/{item['job_id']}").json() for item in exported]
+    # The same fields, except the industry evidence, which only the detail page explains.
+    assert exported == [{key: value for key, value in detail.items() if key != "industry_reasons"} for detail in details]
 
 
 def test_formula_injection_is_neutralized_in_csv_only(api, data):

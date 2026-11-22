@@ -11,7 +11,7 @@ For every URL, and again for every redirect hop:
 | HTTP 429                   | Wait for Retry-After (capped) or back off; slow the host down |
 | HTTP 5xx                   | Retry with backoff                                            |
 | Other 4xx                  | No retry: the page failed                                     |
-| Not HTML                   | No retry: the page is skipped                                 |
+| Not HTML or JSON           | No retry: the page is skipped                                 |
 | Retries used up            | The page failed                                               |
 
 Results are returned, never raised, so one bad page cannot stop the crawl.
@@ -38,6 +38,7 @@ RETRY_AFTER_CAP_SECONDS = 60.0
 BACKOFF_BASE_SECONDS = 1.0
 BACKOFF_CAP_SECONDS = 30.0
 HTML_TYPES = ("text/html", "application/xhtml+xml")
+JSON_TYPES = ("application/json",)  # public job-board APIs (Greenhouse, Lever); read only by extractors that ask
 REDIRECT_CODES = {301, 302, 303, 307, 308}
 
 # log(level, message, **context): writes a background-job log line.
@@ -50,8 +51,9 @@ class FetchResult:
     final_url: str
     outcome: Literal["ok", "skipped", "failed"]
     status: int | None = None
-    html: str | None = None
+    html: str | None = None  # the body text: HTML, or JSON for a job-board API
     reason: str | None = None
+    content_type: str | None = None  # e.g. "text/html" or "application/json", for an "ok" result
 
 
 class PageTooLargeError(Exception):
@@ -147,9 +149,10 @@ class Fetcher:
                 continue
             if 200 <= status < 300:
                 content_type = headers.get("content-type", "").split(";")[0].strip().lower()
-                if html_only and content_type not in HTML_TYPES:
-                    return FetchResult(url, current, "skipped", status, reason=f"not HTML ({content_type or 'unknown type'})")
-                return FetchResult(url, current, "ok", status, html=body)
+                if html_only and content_type not in HTML_TYPES + JSON_TYPES:
+                    return FetchResult(url, current, "skipped", status,
+                                       reason=f"not HTML or JSON ({content_type or 'unknown type'})")
+                return FetchResult(url, current, "ok", status, html=body, content_type=content_type)
             return FetchResult(url, current, "failed", status, html=body, reason=f"HTTP {status}")
         return FetchResult(url, current, "failed", reason=f"more than {MAX_REDIRECTS} redirects")
 
@@ -197,7 +200,8 @@ class Fetcher:
         raise AssertionError("unreachable")
 
     def _send(self, url: str) -> tuple[int, httpx.Headers, str]:
-        headers = {"User-Agent": self.user_agent, "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5"}
+        headers = {"User-Agent": self.user_agent,
+                   "Accept": "text/html,application/xhtml+xml;q=0.9,application/json;q=0.8,*/*;q=0.5"}
         with self.client.stream("GET", url, headers=headers) as response:
             declared = response.headers.get("content-length")
             if declared and declared.isdigit() and int(declared) > MAX_PAGE_BYTES:

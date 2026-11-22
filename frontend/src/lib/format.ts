@@ -1,7 +1,7 @@
 // Display formatting for the application pages. Values are shown as the API sends them; these
 // helpers only choose units and words.
 
-import type { BackgroundJobStatus, BackgroundJobType, JobType, Salary } from '@/types/api'
+import type { BackgroundJobStatus, BackgroundJobType, Industry, JobType, Listing, Salary } from '@/types/api'
 
 const numberFormat = new Intl.NumberFormat(undefined)
 const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
@@ -92,6 +92,35 @@ export const JOB_TYPE_LABEL: Record<JobType, string> = {
 
 /** The job type where no "Job type" label stands next to it (list lines, page subtitles, the filter). */
 export const jobTypeText = (type: JobType) => (type === 'unknown' ? 'Type not stated' : JOB_TYPE_LABEL[type])
+
+/** Industry labels, in the backend's order (app/industries/industries.json). */
+export const INDUSTRY_LABEL: Record<Industry, string> = {
+  software_it: 'Software & IT',
+  ai_data: 'AI & Data Science',
+  finance_banking: 'Finance & Banking',
+  marketing: 'Marketing',
+  sales_business: 'Sales & Business',
+  human_resources: 'Human Resources',
+  design: 'Design',
+  operations_supply_chain: 'Operations & Supply Chain',
+  healthcare: 'Healthcare',
+  education: 'Education',
+  engineering: 'Engineering',
+  legal: 'Legal',
+  other: 'Other / Unclassified',
+}
+
+export const LISTING_LABEL: Record<Listing, string> = { real: 'Real listing', demo: 'Demo listing' }
+
+/** The host of a URL ("boards-api.greenhouse.io"), or null if it is not a URL. */
+export function hostOf(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    return new URL(url).host
+  } catch {
+    return null
+  }
+}
 
 export const BACKGROUND_TYPE_LABEL: Record<BackgroundJobType, string> = {
   crawl: 'Crawl',

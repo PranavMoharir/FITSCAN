@@ -19,6 +19,11 @@ def fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
 
 
+def json_fixture(name: str) -> str:
+    """A saved job-board API response (tests/fixtures/json), as the text the fetcher returns."""
+    return (FIXTURES.parent / "json" / name).read_text(encoding="utf-8")
+
+
 def html_page(body: str = "", links: list[str] = (), title: str = "Page") -> str:
     anchors = "".join(f'<a href="{href}">{href}</a>' for href in links)
     return f"<!doctype html><html><head><title>{title}</title></head><body>{body}{anchors}</body></html>"

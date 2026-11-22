@@ -38,7 +38,8 @@ from app.crawler.normalize import (
 )
 from app.crawler.urls import normalize_url
 from app.extractors.base import RawJob
-from app.models import Job, JobSkill
+from app.industries.classifier import classify
+from app.models import Job, JobSkill, Skill
 from app.schemas.job import JobRecord
 from app.skills.extractor import extract_job_skills
 from app.skills.sync import skill_ids
@@ -122,9 +123,11 @@ def build_record(raw: RawJob, *, page_url: str, source: str, fetched_at: datetim
     return BuiltRecord(record, skills_known, skills.unmatched, warnings)
 
 
-def _skill_links(session: Session, job_id: uuid.UUID) -> set[tuple[uuid.UUID, str]]:
-    rows = session.execute(select(JobSkill.skill_id, JobSkill.requirement_level).where(JobSkill.job_id == job_id))
-    return {(skill_id, level) for skill_id, level in rows}
+def _skill_links(session: Session, job_id: uuid.UUID) -> dict[tuple[int, str], str]:
+    """The job's stored skill links: (skill_id, requirement level) -> canonical skill name."""
+    rows = session.execute(select(JobSkill.skill_id, JobSkill.requirement_level, Skill.canonical_name)
+                           .join(Skill, Skill.skill_id == JobSkill.skill_id).where(JobSkill.job_id == job_id))
+    return {(skill_id, level): name for skill_id, level, name in rows}
 
 
 def save_records(session: Session, records: list[BuiltRecord], background_job_id: uuid.UUID | None) -> SaveResult:
@@ -137,9 +140,16 @@ def save_records(session: Session, records: list[BuiltRecord], background_job_id
         # job waits for this transaction, so each save compares against the latest committed values.
         before = session.execute(select(Job.job_id, *match_columns).where(Job.dedup_key == record.dedup_key)
                                  .with_for_update()).first()
-        links_before = _skill_links(session, before.job_id) if before else set()
+        stored_links = _skill_links(session, before.job_id) if before else {}
+        links_before = set(stored_links)
 
+        # The industry of the job as it will be stored (LLD §5.18): the new title; the new description,
+        # or the stored one if this record has none (the merge below keeps it); the new skills if this
+        # record carries skill information, otherwise the stored ones.
+        description = record.description if record.description is not None else (before.description if before else None)
+        skills = (record.required_skills + record.nice_to_have_skills) if built.skills_known else stored_links.values()
         values = record.model_dump(exclude={"required_skills", "nice_to_have_skills"})
+        values["industry"] = classify(record.title, description, skills).industry
         statement = insert(Job).values(job_id=uuid.uuid4(), background_job_id=background_job_id, **values)
         new = statement.excluded
         old = Job.__table__.c
@@ -150,6 +160,7 @@ def save_records(session: Session, records: list[BuiltRecord], background_job_id
             source=new.source,
             source_url=new.source_url,
             background_job_id=new.background_job_id,
+            industry=new.industry,
             job_type=case((new.job_type == "unknown", old.job_type), else_=new.job_type),
             is_remote=or_(old.is_remote, new.is_remote),
             updated_at=func.now(),

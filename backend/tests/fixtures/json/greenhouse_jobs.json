@@ -1,0 +1,141 @@
+{
+ "jobs": [
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/contosogroup/jobs/4011001",
+   "id": 4011001,
+   "internal_job_id": 3011001,
+   "title": "Senior Financial Analyst",
+   "company_name": "Contoso Group",
+   "location": {
+    "name": "Pune, India"
+   },
+   "metadata": [
+    {
+     "id": 9001,
+     "name": "Employment Type",
+     "value": "Full-time",
+     "value_type": "single_select"
+    }
+   ],
+   "first_published": "2026-11-02T09:15:00-05:00",
+   "updated_at": "2026-11-10T12:00:00-05:00",
+   "requisition_id": "FIN-221",
+   "language": "en",
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Contoso Group is a diversified company with a growing finance team.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;You will build financial models and support our banking partners with monthly reporting.&lt;/p&gt;&lt;h3&gt;Requirements&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;3+ years of experience in financial analysis&lt;/li&gt;&lt;li&gt;Financial modeling and US GAAP&lt;/li&gt;&lt;li&gt;Advanced Excel&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;Nice to have&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Power BI&lt;/li&gt;&lt;li&gt;IFRS&lt;/li&gt;&lt;/ul&gt;",
+   "departments": [
+    {
+     "id": 51,
+     "name": "Finance",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "offices": [
+    {
+     "id": 61,
+     "name": "Pune",
+     "location": null,
+     "child_ids": [],
+     "parent_id": null
+    }
+   ]
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/contosogroup/jobs/4011002",
+   "id": 4011002,
+   "internal_job_id": 3011002,
+   "title": "Registered Nurse, Occupational Health",
+   "company_name": "Contoso Group",
+   "location": {
+    "name": "Mumbai, India"
+   },
+   "metadata": null,
+   "first_published": "2026-11-05T08:00:00+05:30",
+   "updated_at": "2026-11-05T08:00:00+05:30",
+   "requisition_id": "HLT-014",
+   "language": "en",
+   "content": "&lt;p&gt;Our on-site clinic cares for employees across the Mumbai campus. You will provide patient care, triage and health screenings.&lt;/p&gt;&lt;h3&gt;Requirements&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Registered nurse licence&lt;/li&gt;&lt;li&gt;BLS and ACLS certification&lt;/li&gt;&lt;li&gt;2+ years of experience in a hospital or clinic&lt;/li&gt;&lt;li&gt;Electronic health records&lt;/li&gt;&lt;/ul&gt;",
+   "departments": [],
+   "offices": []
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/contosogroup/jobs/4011003",
+   "id": 4011003,
+   "internal_job_id": 3011003,
+   "title": "Mechanical Design Engineer",
+   "company_name": "Contoso Group",
+   "location": {
+    "name": "Chennai, India"
+   },
+   "metadata": [
+    {
+     "id": 9001,
+     "name": "Employment Type",
+     "value": "Contract",
+     "value_type": "single_select"
+    },
+    {
+     "id": 9002,
+     "name": "Cost Center",
+     "value": "ENG-7",
+     "value_type": "short_text"
+    }
+   ],
+   "first_published": "2026-10-28T10:30:00+05:30",
+   "updated_at": "2026-11-01T10:30:00+05:30",
+   "requisition_id": "ENG-102",
+   "language": "en",
+   "content": "&lt;p&gt;Design machinery and fixtures for our manufacturing plants.&lt;/p&gt;&lt;h3&gt;Requirements&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;SolidWorks and AutoCAD&lt;/li&gt;&lt;li&gt;Finite element analysis&lt;/li&gt;&lt;li&gt;5+ years of experience&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;Preferred&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Lean Six Sigma&lt;/li&gt;&lt;/ul&gt;",
+   "departments": [],
+   "offices": []
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/contosogroup/jobs/4011004",
+   "id": 4011004,
+   "internal_job_id": 3011004,
+   "title": "Backend Software Engineer",
+   "company_name": "Contoso Group",
+   "location": {
+    "name": "Remote - India"
+   },
+   "metadata": null,
+   "first_published": null,
+   "updated_at": "2026-11-12T16:45:00-05:00",
+   "requisition_id": "ENG-140",
+   "language": "en",
+   "content": "&lt;p&gt;Build the APIs behind our customer apps.&lt;/p&gt;&lt;h3&gt;Requirements&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Python and FastAPI&lt;/li&gt;&lt;li&gt;PostgreSQL&lt;/li&gt;&lt;li&gt;Docker&lt;/li&gt;&lt;/ul&gt;&lt;h3&gt;Nice to have&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Kubernetes&lt;/li&gt;&lt;/ul&gt;",
+   "departments": [],
+   "offices": []
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/contosogroup/jobs/4011005",
+   "id": 4011005,
+   "internal_job_id": 3011005,
+   "title": "Office Coordinator",
+   "company_name": null,
+   "location": null,
+   "metadata": null,
+   "first_published": null,
+   "updated_at": null,
+   "requisition_id": null,
+   "language": "en",
+   "content": null,
+   "departments": [],
+   "offices": []
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/contosogroup/jobs/4011006",
+   "id": 4011006,
+   "title": "",
+   "company_name": "Contoso Group",
+   "location": {
+    "name": "Pune, India"
+   },
+   "content": null
+  },
+  "not a job object"
+ ],
+ "meta": {
+  "total": 7
+ }
+}

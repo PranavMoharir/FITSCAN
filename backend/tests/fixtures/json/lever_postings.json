@@ -1,0 +1,118 @@
+[
+ {
+  "id": "5f1c2b3a-1111-4a2b-9c3d-000000000001",
+  "text": "Growth Marketing Manager",
+  "categories": {
+   "commitment": "Full-time",
+   "department": "Marketing",
+   "location": "Bengaluru, India",
+   "team": "Growth",
+   "allLocations": [
+    "Bengaluru, India"
+   ]
+  },
+  "country": "IN",
+  "workplaceType": "hybrid",
+  "createdAt": 1793687400000,
+  "description": "<div>Lead our campaigns across search, email and social media.</div>",
+  "descriptionPlain": "Lead our campaigns across search, email and social media.",
+  "lists": [
+   {
+    "text": "Requirements",
+    "content": "<li>4+ years of experience in digital marketing</li><li>SEO and Google Ads</li><li>Google Analytics</li>"
+   },
+   {
+    "text": "Nice to have",
+    "content": "<li>Copywriting</li><li>Email marketing</li>"
+   }
+  ],
+  "additional": "<div>We review every application.</div>",
+  "additionalPlain": "We review every application.",
+  "salaryRange": {
+   "min": 1800000,
+   "max": 2600000,
+   "currency": "INR",
+   "interval": "per-year-salary"
+  },
+  "hostedUrl": "https://jobs.lever.co/fabrikam/5f1c2b3a-1111-4a2b-9c3d-000000000001",
+  "applyUrl": "https://jobs.lever.co/fabrikam/5f1c2b3a-1111-4a2b-9c3d-000000000001/apply"
+ },
+ {
+  "id": "5f1c2b3a-1111-4a2b-9c3d-000000000002",
+  "text": "Account Executive, Mid-Market",
+  "categories": {
+   "commitment": "Full-time",
+   "department": "Sales",
+   "location": "Remote",
+   "team": "Revenue",
+   "allLocations": [
+    "Remote"
+   ]
+  },
+  "country": "IN",
+  "workplaceType": "remote",
+  "createdAt": 1794119400000,
+  "description": "<div>Own a book of mid-market customer accounts and close new deals against a quarterly quota.</div>",
+  "lists": [
+   {
+    "text": "What you'll need",
+    "content": "<li>Salesforce</li><li>B2B sales</li><li>Lead generation</li>"
+   }
+  ],
+  "additional": "",
+  "hostedUrl": "https://jobs.lever.co/fabrikam/5f1c2b3a-1111-4a2b-9c3d-000000000002",
+  "applyUrl": "https://jobs.lever.co/fabrikam/5f1c2b3a-1111-4a2b-9c3d-000000000002/apply"
+ },
+ {
+  "id": "5f1c2b3a-1111-4a2b-9c3d-000000000003",
+  "text": "Supply Chain Planner",
+  "categories": {
+   "commitment": "Full-time",
+   "department": "Operations",
+   "location": "Pune, India",
+   "team": "Planning"
+  },
+  "workplaceType": "onsite",
+  "createdAt": 1794292200000,
+  "description": "<div>Plan inventory for our warehouse and distribution network and work with suppliers.</div>",
+  "lists": [
+   {
+    "text": "Requirements",
+    "content": "<li>Supply chain management</li><li>Inventory management</li><li>SAP</li>"
+   }
+  ],
+  "hostedUrl": "https://jobs.lever.co/fabrikam/5f1c2b3a-1111-4a2b-9c3d-000000000003"
+ },
+ {
+  "id": "5f1c2b3a-1111-4a2b-9c3d-000000000004",
+  "text": "Corporate Paralegal",
+  "categories": {
+   "commitment": "Part-time",
+   "location": "Mumbai, India"
+  },
+  "workplaceType": "onsite",
+  "createdAt": 1794378600000,
+  "description": "<div>Support our attorneys with contract review, legal research and litigation files.</div>",
+  "lists": [
+   {
+    "text": "Requirements",
+    "content": "<li>Contract drafting</li><li>Legal research</li>"
+   }
+  ],
+  "hostedUrl": "https://jobs.lever.co/fabrikam/5f1c2b3a-1111-4a2b-9c3d-000000000004"
+ },
+ {
+  "id": "5f1c2b3a-1111-4a2b-9c3d-000000000005",
+  "text": "Product Designer",
+  "categories": {},
+  "createdAt": null,
+  "description": null,
+  "lists": [],
+  "applyUrl": "https://jobs.lever.co/fabrikam/5f1c2b3a-1111-4a2b-9c3d-000000000005/apply"
+ },
+ {
+  "id": "5f1c2b3a-1111-4a2b-9c3d-000000000006",
+  "text": null,
+  "hostedUrl": "https://jobs.lever.co/fabrikam/x"
+ }
+]

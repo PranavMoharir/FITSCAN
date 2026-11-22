@@ -1,12 +1,13 @@
 // Jobs (LLD §8.2): searchable, paginated table of crawled postings with CSV/JSON export using the
 // same filters ("what you see is what you export", LLD §4.5). Filters live in the address.
+// Each row says whether it is a real or a demo listing, its industry and its source (LLD §5.16-5.18).
 
-import { Briefcase, Search, X } from 'lucide-react'
+import { ArrowUpRight, Briefcase, Search, X } from 'lucide-react'
 import { useId } from 'react'
 import { Link } from 'react-router'
 
 import { exportUrl, searchJobs } from '@/api/client'
-import { ExportButtons, SkillList } from '@/components/app/data-display'
+import { DemoBadge, ExportButtons, SkillList } from '@/components/app/data-display'
 import { PageHeader } from '@/components/app/PageHeader'
 import { Pagination } from '@/components/app/Pagination'
 import { EmptyState, ErrorNotice } from '@/components/app/states'
@@ -22,11 +23,17 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { oneOf, positiveInt, useQueryState } from '@/hooks/useQueryState'
 import { useResource } from '@/hooks/useResource'
 import { useSkills } from '@/hooks/useSkills'
-import { formatDate, JOB_TYPE_LABEL, jobTypeText } from '@/lib/format'
+import { sourceLabel, useSources } from '@/hooks/useSources'
+import { formatDate, INDUSTRY_LABEL, JOB_TYPE_LABEL, jobTypeText } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import type { JobFilters, JobSort, JobSummary, JobType, SortOrder } from '@/types/api'
+import type { Industry, JobFilters, JobSort, JobSummary, JobType, Listing, SortOrder, SourceInfo } from '@/types/api'
 
 const JOB_TYPES = Object.keys(JOB_TYPE_LABEL) as JobType[]
+const INDUSTRIES = Object.keys(INDUSTRY_LABEL) as Industry[]
+const LISTINGS: { value: Listing; label: string }[] = [
+  { value: 'real', label: 'Real listings' },
+  { value: 'demo', label: 'Demo listings' },
+]
 const PAGE_SIZES = [20, 50, 100]
 const SORTS: { value: string; label: string; sort?: JobSort; order?: SortOrder }[] = [
   { value: 'newest', label: 'Newest posted' },
@@ -39,13 +46,29 @@ const SORTS: { value: string; label: string; sort?: JobSort; order?: SortOrder }
 const experience = (years: number | null, inLine = false) =>
   years === null ? (inLine ? 'Experience not stated' : 'Not stated') : years === 0 ? 'No minimum' : `${years}+ yrs`
 
-function JobCells({ job }: { job: JobSummary }) {
+function JobCells({ job, sources }: { job: JobSummary; sources: SourceInfo[] }) {
+  const demo = job.listing === 'demo'
   return (
     <div className="min-w-0">
-      <Link to={`/jobs/${job.job_id}`} className="rounded font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
-        {job.title}
-      </Link>
-      <p className="mt-0.5 truncate text-[13px] text-muted-foreground">{job.company ?? 'Company not stated'}</p>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Link to={`/jobs/${job.job_id}`} className="rounded font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
+          {job.title}
+        </Link>
+        {demo && <DemoBadge />}
+      </p>
+      <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+        {job.company ?? 'Company not stated'} · {INDUSTRY_LABEL[job.industry]}
+      </p>
+      <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-subtle-foreground">
+        <span className="truncate">{sourceLabel(sources, job.source)}</span>
+        {!demo && (
+          <a href={job.apply_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-0.5 rounded font-medium text-accent-ink underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
+            Original posting
+            <ArrowUpRight className="size-3" aria-hidden="true" />
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
+        )}
+      </p>
     </div>
   )
 }
@@ -53,6 +76,7 @@ function JobCells({ job }: { job: JobSummary }) {
 export default function JobsPage() {
   useDocumentTitle('Jobs')
   const skills = useSkills()
+  const sources = useSources()
   const listId = useId()
   const { get, set } = useQueryState()
 
@@ -62,6 +86,9 @@ export default function JobsPage() {
     location: get('location') || undefined,
     job_type: oneOf(get('job_type'), JOB_TYPES),
     max_required_years: get('max_required_years') !== '' && Number(get('max_required_years')) >= 0 ? Number(get('max_required_years')) : undefined,
+    listing: oneOf(get('listing'), ['real', 'demo'] as const),
+    industry: oneOf(get('industry'), INDUSTRIES),
+    source: get('source') || undefined,
   }
   const sortKey = SORTS.find((s) => s.sort === (get('sort') || undefined) && s.order === (get('order') || undefined))?.value ?? 'newest'
   const sort = SORTS.find((s) => s.value === sortKey)!
@@ -77,15 +104,17 @@ export default function JobsPage() {
   const [location, setLocation] = useDebouncedParam(get('location'), (v) => set({ location: v }))
   const [years, setYears] = useDebouncedParam(get('max_required_years'), (v) => set({ max_required_years: v }))
 
-  const filtered = Boolean(filters.q || filters.skill || filters.location || filters.job_type || filters.max_required_years !== undefined)
-  const clear = () => set({ q: null, skill: null, location: null, job_type: null, max_required_years: null })
+  const filtered = Boolean(
+    filters.q || filters.skill || filters.location || filters.job_type || filters.max_required_years !== undefined || filters.listing || filters.industry || filters.source,
+  )
+  const clear = () => set({ q: null, skill: null, location: null, job_type: null, max_required_years: null, listing: null, industry: null, source: null })
   const jobs = list.data?.items ?? []
 
   return (
     <>
       <PageHeader
         title="Jobs"
-        description="Crawled job postings. Open one to see its top candidates."
+        description="Postings from real company sources and demo sites, each with its industry. Open one to see its top candidates."
       />
 
       <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]" role="search" aria-label="Filter jobs">
@@ -100,6 +129,47 @@ export default function JobsPage() {
           ))}
         </datalist>
         <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location, e.g. Pune" aria-label="Location" />
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <Select value={filters.listing ?? 'all'} onValueChange={(v) => set({ listing: v === 'all' ? null : v })}>
+          <SelectTrigger className="h-9 w-[10.5rem] rounded-full" aria-label="Real or demo listings">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All listings</SelectItem>
+            {LISTINGS.map((l) => (
+              <SelectItem key={l.value} value={l.value}>
+                {l.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filters.industry ?? 'all'} onValueChange={(v) => set({ industry: v === 'all' ? null : v })}>
+          <SelectTrigger className="h-9 w-[13.5rem] rounded-full" aria-label="Industry">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All industries</SelectItem>
+            {INDUSTRIES.map((i) => (
+              <SelectItem key={i} value={i}>
+                {INDUSTRY_LABEL[i]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filters.source ?? 'all'} onValueChange={(v) => set({ source: v === 'all' ? null : v })}>
+          <SelectTrigger className="h-9 w-[16rem] max-w-full rounded-full" aria-label="Source">
+            <SelectValue>{filters.source ? sourceLabel(sources, filters.source) : 'All sources'}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All sources</SelectItem>
+            {sources.map((s) => (
+              <SelectItem key={s.name} value={s.name}>
+                {s.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Select value={filters.job_type ?? 'all'} onValueChange={(v) => set({ job_type: v === 'all' ? null : v })}>
@@ -202,7 +272,7 @@ export default function JobsPage() {
                     {jobs.map((job) => (
                       <TableRow key={job.job_id}>
                         <TableCell className="max-w-0">
-                          <JobCells job={job} />
+                          <JobCells job={job} sources={sources} />
                         </TableCell>
                         <TableCell className="text-[13px] text-muted-foreground">{job.location ?? '—'}</TableCell>
                         <TableCell className="whitespace-nowrap text-[13px] text-muted-foreground">{JOB_TYPE_LABEL[job.job_type]}</TableCell>
@@ -219,7 +289,7 @@ export default function JobsPage() {
               <ul className="divide-y divide-border lg:hidden">
                 {jobs.map((job) => (
                   <li key={job.job_id} className="p-4">
-                    <JobCells job={job} />
+                    <JobCells job={job} sources={sources} />
                     <p className="mt-1.5 text-xs text-subtle-foreground">
                       {[job.location, jobTypeText(job.job_type), job.posted_date && `Posted ${formatDate(job.posted_date)}`, experience(job.min_experience_years, true)].filter(Boolean).join(' · ')}
                     </p>

@@ -42,16 +42,34 @@ class ExtractionResult:
 
 
 class BaseExtractor:
-    """Subclass this in `app/extractors/<site>.py` and set `name` and `domains`."""
+    """Subclass this in `app/extractors/<site>.py` and set `name`, `label` and `domains`.
+
+    `demo = True` marks a demo site with invented jobs (the mock site, Fake Python Jobs): its
+    jobs are labelled demo everywhere and never shown as real openings. A job counts as demo
+    exactly when its `source` is the name of a demo extractor; the crawler takes jobs from a
+    demo extractor's hosts only through a demo extractor, so this stays true.
+    """
 
     name: ClassVar[str] = ""                     # stored as jobs.source
+    label: ClassVar[str] = ""                    # shown in the UI, e.g. "Greenhouse job board"
+    description: ClassVar[str] = ""              # one sentence for the list of sources
+    demo: ClassVar[bool] = False                 # True: invented jobs on a demo site, never real openings
     domains: ClassVar[tuple[str, ...]] = ()      # hosts this extractor handles
+    formats: ClassVar[tuple[Literal["html", "json"], ...]] = ("html",)  # what `parse` reads
     render_mode: ClassVar[Literal["static", "browser"]] = "static"
     ready_selector: ClassVar[str | None] = None  # CSS selector the browser waits for
+    # How the crawl form builds a seed URL: a template with one {key} (e.g. a board token), or an example URL.
+    seed_template: ClassVar[str | None] = None
+    seed_key_label: ClassVar[str | None] = None  # what {key} is, e.g. "Board token"
+    example_seed: ClassVar[str | None] = None
 
-    def matches(self, url: str) -> bool:
+    def handles_host(self, url: str) -> bool:
+        """True if the URL's host is one of `domains` (or a subdomain), whatever the path."""
         host = (urlsplit(url).hostname or "").lower()
         return any(host == d or host.endswith("." + d) for d in self.domains)
+
+    def matches(self, url: str) -> bool:
+        return self.handles_host(url)
 
     def needs_browser(self, url: str, static_html: str) -> bool:
         return False

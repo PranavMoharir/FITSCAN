@@ -5,6 +5,9 @@ is registered, so adding a site needs no change here. Selection order:
 1. the extractor named in the crawl request;
 2. the first registered extractor whose `matches(url)` is true (alphabetical by name);
 3. the generic schema.org JobPosting fallback.
+
+A demo site's jobs are taken only by its demo extractor (`demo_site`): the crawler drops jobs
+that another extractor finds on a demo host, so a demo job can never be saved as a real one.
 """
 
 import importlib
@@ -31,8 +34,22 @@ class ExtractorRegistry:
     def names(self) -> list[str]:
         return sorted(self._by_name)
 
+    @property
+    def demo_names(self) -> list[str]:
+        """The sources whose jobs are demo listings (invented jobs, never real openings)."""
+        return sorted(name for name, extractor in self._by_name.items() if extractor.demo)
+
+    @property
+    def extractors(self) -> list[BaseExtractor]:
+        """Every extractor: real sources first, then demo ones, each group by label."""
+        return sorted(self._by_name.values(), key=lambda e: (e.demo, e.label.lower(), e.name))
+
     def get(self, name: str) -> BaseExtractor:
         return self._by_name[name]
+
+    def demo_site(self, url: str) -> BaseExtractor | None:
+        """The demo extractor that owns the URL's host, if the host is a demo site (any path)."""
+        return next((e for e in self._by_name.values() if e.demo and e.handles_host(url)), None)
 
     def select(self, url: str, forced_name: str | None = None) -> BaseExtractor:
         if forced_name:

@@ -11,6 +11,9 @@ contains exactly what the search shows ("what you see is what you export").
 - **Location / city**: a known city also matches its other spellings ("Bangalore" = "Bengaluru").
 - **Sorting** (decision LLD-5): only allow-listed fields; missing values last in both directions;
   equal values ordered by ID, so pages never repeat or skip a row.
+- **Real or demo** (`listing`): a job is real only if its `source` is a real-source extractor
+  (GET /sources); the demo sites' jobs, and any source no extractor claims, are demo.
+- **Industry** (`industry`): the stored code; the detail read adds the evidence behind it.
 - **Skills of each row** are collected inside the same query (a correlated `array_agg`), so a page
   costs two queries (count + page) and a detail read one, whatever the number of rows or skills.
 
@@ -26,11 +29,13 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.extractors.registry import get_registry
+from app.industries.classifier import classify, industry_label
 from app.locations.normalizer import normalize_city, spellings_of
 from app.models import Candidate, CandidateSkill, Job, JobSkill, Skill
 from app.schemas.candidate import CandidateDetail, CandidateFilterParams, CandidateList, CandidateSearchParams, \
     CandidateSummary, EducationEntry
-from app.schemas.job import JobDetail, JobFilterParams, JobList, JobSearchParams, JobSummary, Salary
+from app.schemas.job import JobDetail, JobFilterParams, JobList, JobSearchParams, JobSummary, JobView, Salary
 from app.schemas.skill import SkillItem, SkillList
 from app.skills.normalizer import get_taxonomy
 
@@ -92,12 +97,23 @@ def _job_skill_names(level: str):
 JOB_SUMMARY_COLUMNS = (
     Job.job_id, Job.title, Job.company, Job.location, Job.job_type, Job.salary_min, Job.salary_max,
     Job.salary_currency, Job.salary_period, Job.posted_date, Job.min_experience_years, Job.apply_url, Job.source,
+    Job.industry,
     _job_skill_names("required").label("required_skills"),
     _job_skill_names("nice_to_have").label("nice_to_have_skills"),
 )
 JOB_DETAIL_COLUMNS = JOB_SUMMARY_COLUMNS + (
     Job.is_remote, Job.description, Job.salary_text, Job.source_url, Job.created_at, Job.updated_at,
 )
+
+
+def real_sources() -> list[str]:
+    """The sources whose jobs are real openings: every extractor that is not a demo site's."""
+    registry = get_registry()
+    return [name for name in registry.names if name not in registry.demo_names]
+
+
+def listing_of(source: str) -> str:
+    return "real" if source in real_sources() else "demo"
 
 
 def job_conditions(params: JobFilterParams) -> list[ColumnElement[bool]]:
@@ -120,6 +136,14 @@ def job_conditions(params: JobFilterParams) -> list[ColumnElement[bool]]:
     if params.max_required_years is not None:
         # "Which jobs suit someone with N years": jobs without a minimum count too (decision LLD-6).
         conditions.append(or_(Job.min_experience_years.is_(None), Job.min_experience_years <= params.max_required_years))
+    if params.listing == "real":
+        conditions.append(Job.source.in_(real_sources()))
+    elif params.listing == "demo":
+        conditions.append(Job.source.not_in(real_sources()))
+    if params.industry:
+        conditions.append(Job.industry == params.industry)
+    if params.source:
+        conditions.append(Job.source == params.source)
     return conditions
 
 
@@ -149,7 +173,7 @@ def job_summary(row) -> JobSummary:
         job_id=row.job_id, title=row.title, company=row.company, location=row.location, job_type=row.job_type,
         salary=_salary(row), posted_date=row.posted_date, required_skills=_names(row.required_skills),
         nice_to_have_skills=_names(row.nice_to_have_skills), min_experience_years=number(row.min_experience_years),
-        apply_url=row.apply_url, source=row.source,
+        apply_url=row.apply_url, source=row.source, listing=listing_of(row.source), industry=row.industry,
     )
 
 
@@ -169,12 +193,23 @@ def search_jobs(session: Session, params: JobSearchParams) -> JobList:
     return JobList(items=[job_summary(row) for row in rows], total=total, page=params.page, page_size=params.page_size)
 
 
-def get_job(session: Session, job_id: uuid.UUID) -> JobDetail:
-    """GET /jobs/{id}: one query, skills included."""
+def industry_reasons(row) -> list[str]:
+    """The evidence for the stored industry, from the job's title, skills and description (LLD §5.18)."""
+    skills = _names(row.required_skills) + _names(row.nice_to_have_skills)
+    result = classify(row.title, row.description, skills)
+    reasons = result.reasons(row.industry)
+    if result.industry != row.industry:  # the rules changed since the job was saved
+        reasons.append(f"With the current rules this job would be {industry_label(result.industry)}; it is updated "
+                       "when it is crawled again.")
+    return reasons
+
+
+def get_job(session: Session, job_id: uuid.UUID) -> JobView:
+    """GET /jobs/{id}: one query, skills included, with the evidence for the industry."""
     row = session.execute(select(*JOB_DETAIL_COLUMNS).where(Job.job_id == job_id)).first()
     if row is None:
         raise AppError(404, "NOT_FOUND", "Job not found.")
-    return job_detail(row)
+    return JobView(**job_detail(row).model_dump(), industry_reasons=industry_reasons(row))
 
 
 # --- Candidates ------------------------------------------------------------------------------------

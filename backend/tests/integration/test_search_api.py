@@ -23,8 +23,9 @@ STORED_PATH = "6b1f2c3d-0000-4000-8000-000000000001.pdf"
 SHA = "a" * 64
 
 JOB_KEYS = {"job_id", "title", "company", "location", "job_type", "salary", "posted_date", "required_skills",
-            "nice_to_have_skills", "min_experience_years", "apply_url", "source"}
-JOB_DETAIL_KEYS = JOB_KEYS | {"is_remote", "description", "salary_text", "source_url", "created_at", "updated_at"}
+            "nice_to_have_skills", "min_experience_years", "apply_url", "source", "listing", "industry"}
+JOB_DETAIL_KEYS = JOB_KEYS | {"is_remote", "description", "salary_text", "source_url", "created_at", "updated_at",
+                              "industry_reasons"}
 CANDIDATE_KEYS = {"candidate_id", "name", "email", "phone", "city", "current_title", "skills", "years_experience",
                   "education", "summary", "source_file", "parsed_with_ocr"}
 CANDIDATE_DETAIL_KEYS = CANDIDATE_KEYS | {"parse_warnings", "created_at", "updated_at"}

@@ -29,7 +29,11 @@ def job_from_element(element, page_url: str) -> RawJob:
 
 class MockStaticExtractor(BaseExtractor):
     name = "mock_static"
+    label = "Demo: FITSCAN mock site (static pages)"
+    description = "Invented jobs on the bundled mock site, for demonstrations and tests. Never real openings."
+    demo = True
     domains = ("mock-site",)
+    example_seed = "http://mock-site:8080/static/index.html"
 
     def matches(self, url: str) -> bool:
         return super().matches(url) and urlsplit(url).path.startswith("/static/")

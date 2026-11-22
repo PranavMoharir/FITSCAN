@@ -44,6 +44,7 @@ All records have status **Proposed**. They become **Accepted** once implementati
 | 025 | Matched/missing skills stored as JSONB | Choice |
 | 026 | Partial-failure semantics | Choice |
 | 027 | No API version prefix | Choice |
+| 028 | Real and demo sources; stored industry per job | Choice |
 
 ---
 
@@ -266,3 +267,17 @@ All records have status **Proposed**. They become **Accepted** once implementati
 - **Context.** The brief specifies exact paths such as `GET /candidates/{id}/matches`.
 - **Decision.** Serve routes without a `/api/v1` prefix.
 - **Consequences.** The paths match the brief exactly. If versioning is ever needed, a prefix can be added together with redirects.
+
+## ADR-028 — Real and demo sources; stored industry per job
+
+- **Context.** The brief allows real job sources, generated data or both. FITSCAN collects real openings from company career pages and job-board APIs and keeps its demo sites, across industries, not only IT. Users must never mistake an invented job for a real opening, and must be able to browse by industry.
+- **Decision (22 November 2026).** (1) Real versus demo is derived from `jobs.source`: each extractor declares `demo`, a job is real only if its source is a real-source extractor, and the crawler takes jobs from a demo host only through its demo extractor; no column is added for it. (2) The industry is computed by explainable rules (title terms, skill categories, description terms; Other / Unclassified when the evidence is weak or tied) when a job is saved, and stored in a new `jobs.industry` column, indexed and checked against the 13 codes. (3) JSON job-board APIs (Greenhouse, Lever) are read by ordinary extractor plug-ins through the same crawler.
+- **Alternatives considered.**
+  - A stored `is_demo` flag: the source already says it, and a flag could disagree with it.
+  - Classifying the industry on every request: it cannot be filtered, counted or paged in SQL, and would break the one-query-per-page search (LLD §4.4).
+  - Keyword rules in SQL, or a trained classifier: hard to explain and test, or a new dependency and training data.
+- **Consequences.**
+  - The Jobs filters, counts and exports stay plain SQL; the job page shows the evidence for the industry.
+  - The migration fills the industry of existing jobs once; when the rules change, a job is reclassified on its next crawl (the job page says when the current rules would classify it differently).
+  - Industries never affect matching; real and demo jobs are scored by the same engine.
+  - A removed extractor's old jobs count as demo, never as real.

@@ -1,0 +1,137 @@
+{
+  "industries": {
+    "software_it": {
+      "label": "Software & IT",
+      "title": ["software", "developer", "programmer", "devops", "sre", "site reliability", "frontend", "front end",
+                "backend", "back end", "full stack", "fullstack", "web developer", "mobile developer", "ios", "android",
+                "ui developer", "qa engineer", "test engineer", "quality assurance engineer", "test automation",
+                "it support", "it specialist", "it manager", "it administrator", "help desk", "helpdesk",
+                "system administrator", "systems administrator", "sysadmin", "network engineer", "network administrator",
+                "cloud engineer", "cloud architect", "solutions architect", "security engineer", "cybersecurity",
+                "cyber security", "information security", "database administrator", "platform engineer",
+                "infrastructure engineer", "technical support"],
+      "description": ["software", "codebase", "api", "apis", "microservices", "web applications", "code reviews",
+                      "deployments", "cloud infrastructure"]
+    },
+    "ai_data": {
+      "label": "AI & Data Science",
+      "title": ["data scientist", "data science", "machine learning", "ml engineer", "mlops", "ai engineer",
+                "artificial intelligence", "data analyst", "data engineer", "analytics engineer", "analytics",
+                "business intelligence", "bi developer", "bi analyst", "nlp", "computer vision", "deep learning",
+                "statistician"],
+      "description": ["machine learning", "data science", "datasets", "data pipelines", "predictive models",
+                      "statistical analysis", "dashboards"]
+    },
+    "finance_banking": {
+      "label": "Finance & Banking",
+      "title": ["finance", "financial", "accountant", "accounting", "auditor", "audit", "bookkeeper", "treasury",
+                "tax", "banker", "banking", "bank", "credit analyst", "loan officer", "underwriter", "actuary",
+                "actuarial", "investment", "portfolio manager", "wealth", "cfo", "chief financial officer",
+                "quantitative analyst", "risk analyst", "insurance", "claims adjuster"],
+      "description": ["financial", "banking", "investment", "investments", "accounting", "audit", "portfolio",
+                      "lending", "underwriting", "insurance"]
+    },
+    "marketing": {
+      "label": "Marketing",
+      "title": ["marketing", "marketer", "seo", "social media", "content strategist", "content writer", "copywriter",
+                "copy writer", "brand manager", "public relations", "communications manager", "growth marketing",
+                "media buyer", "advertising", "market research"],
+      "description": ["marketing", "campaigns", "brand awareness", "social media", "seo", "content strategy",
+                      "audience"]
+    },
+    "sales_business": {
+      "label": "Sales & Business",
+      "title": ["sales", "account executive", "account manager", "business development", "sales development",
+                "inside sales", "customer success", "customer service", "business analyst", "partnerships",
+                "real estate agent", "retail associate", "store manager"],
+      "description": ["sales", "quota", "prospects", "closing deals", "revenue targets", "customer accounts"]
+    },
+    "human_resources": {
+      "label": "Human Resources",
+      "title": ["hr", "human resources", "recruiter", "recruiting", "talent acquisition", "people operations",
+                "people partner", "hrbp", "hr business partner", "payroll", "compensation", "benefits specialist",
+                "learning and development"],
+      "description": ["human resources", "recruitment", "payroll", "employee relations", "talent acquisition",
+                      "onboarding of new employees", "hr policies"]
+    },
+    "design": {
+      "label": "Design",
+      "title": ["designer", "graphic designer", "ux", "ui", "product designer", "visual designer", "art director",
+                "creative director", "illustrator", "animator", "motion designer", "interior designer",
+                "fashion designer"],
+      "description": ["user experience", "visual design", "design system", "prototypes", "wireframes",
+                      "typography", "user interface"]
+    },
+    "operations_supply_chain": {
+      "label": "Operations & Supply Chain",
+      "title": ["operations", "supply chain", "logistics", "warehouse", "procurement", "purchasing", "buyer",
+                "inventory", "fulfillment", "fulfilment", "distribution", "fleet", "dispatcher", "shipping",
+                "transportation", "production planner", "facilities"],
+      "description": ["supply chain", "logistics", "warehouse", "inventory", "procurement", "fulfillment",
+                      "distribution center", "suppliers"]
+    },
+    "healthcare": {
+      "label": "Healthcare",
+      "title": ["nurse", "nursing", "rn", "lpn", "physician", "doctor", "surgeon", "medical", "clinical", "clinician",
+                "pharmacist", "pharmacy", "therapist", "physiotherapist", "dentist", "dental", "caregiver",
+                "care assistant", "healthcare", "health care", "paramedic", "radiographer", "radiologist",
+                "phlebotomist", "midwife", "psychologist"],
+      "description": ["patients", "patient", "clinical", "hospital", "clinic", "nursing", "care plans"]
+    },
+    "education": {
+      "label": "Education",
+      "title": ["teacher", "teaching", "tutor", "lecturer", "professor", "instructor", "educator", "school",
+                "principal", "curriculum", "education", "academic", "librarian"],
+      "description": ["students", "classroom", "curriculum", "lesson", "lessons", "teaching", "pupils", "learners"]
+    },
+    "engineering": {
+      "label": "Engineering",
+      "title": ["mechanical engineer", "electrical engineer", "civil engineer", "chemical engineer",
+                "structural engineer", "manufacturing engineer", "process engineer", "industrial engineer",
+                "aerospace engineer", "automotive engineer", "electronics engineer", "hardware engineer",
+                "energy engineer", "environmental engineer", "maintenance engineer", "quality engineer",
+                "mechanical", "electrical", "civil engineering", "mechatronics", "drafter", "draftsman"],
+      "description": ["mechanical", "electrical", "civil", "manufacturing", "structural", "hvac", "machinery",
+                      "production line"]
+    },
+    "legal": {
+      "label": "Legal",
+      "title": ["lawyer", "attorney", "solicitor", "barrister", "paralegal", "legal", "counsel", "general counsel",
+                "compliance officer", "compliance analyst", "contracts manager", "notary"],
+      "description": ["litigation", "law firm", "attorney", "attorneys", "paralegal", "legal counsel",
+                      "legal advice", "court"]
+    },
+    "other": {
+      "label": "Other / Unclassified"
+    }
+  },
+  "skill_categories": {
+    "language": "software_it",
+    "framework": "software_it",
+    "database": "software_it",
+    "devops": "software_it",
+    "cloud": "software_it",
+    "api": "software_it",
+    "architecture": "software_it",
+    "testing": "software_it",
+    "tool": "software_it",
+    "data": "ai_data",
+    "finance": "finance_banking",
+    "marketing": "marketing",
+    "sales": "sales_business",
+    "human_resources": "human_resources",
+    "design": "design",
+    "operations": "operations_supply_chain",
+    "healthcare": "healthcare",
+    "education": "education",
+    "engineering": "engineering",
+    "legal": "legal"
+  },
+  "skills": {
+    "Excel": null,
+    "Agile": null,
+    "Scrum": null,
+    "Jira": null,
+    "Figma": "design"
+  }
+}

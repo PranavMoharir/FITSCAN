@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.common import ErrorResponse
-from app.schemas.job import JobDetail, JobList, JobSearchParams
+from app.schemas.job import JobList, JobSearchParams, JobView
 from app.schemas.match import MAX_MATCHES, JobMatches
 from app.services import matches as match_service
 from app.services import search
@@ -27,7 +27,9 @@ _ERRORS = {404: {"model": ErrorResponse, "description": "Unknown job"},
     "", response_model=JobList, responses={422: {"model": ErrorResponse, "description": "Invalid query parameter"}},
     summary="Search jobs",
     description="Filters combine with AND. `q` searches the title and the company; `skill` accepts aliases and "
-                "matches required or nice-to-have skills; `max_required_years` also returns jobs with no minimum. "
+                "matches required or nice-to-have skills; `max_required_years` also returns jobs with no minimum; "
+                "`listing` is real or demo; `industry` is an industry code; `source` is a source name from "
+                "GET /sources. "
                 "Sorted by `posted_date` (newest first, jobs without a date last) or `title`; equal values are "
                 "ordered by ID. Unknown query parameters are rejected with 422.",
 )
@@ -35,10 +37,11 @@ def search_jobs(params: Annotated[JobSearchParams, Query()], db: Session = Depen
     return search.search_jobs(db, params)
 
 
-@router.get("/{job_id}", response_model=JobDetail, responses=_ERRORS, summary="One job",
-            description="Every stored field of the job, with its required and nice-to-have skills. Its top "
-                        "candidates are at GET /jobs/{job_id}/matches.")
-def get_job(job_id: uuid.UUID, db: Session = Depends(get_db)) -> JobDetail:
+@router.get("/{job_id}", response_model=JobView, responses=_ERRORS, summary="One job",
+            description="Every stored field of the job, with its required and nice-to-have skills, whether it is "
+                        "a real or a demo listing, and the evidence for its industry. Its top candidates are at "
+                        "GET /jobs/{job_id}/matches.")
+def get_job(job_id: uuid.UUID, db: Session = Depends(get_db)) -> JobView:
     return search.get_job(db, job_id)
 
 

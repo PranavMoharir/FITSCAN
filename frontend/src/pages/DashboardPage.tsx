@@ -15,7 +15,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePolling } from '@/hooks/usePolling'
 import { useResource } from '@/hooks/useResource'
 import { POLL_INTERVAL_MS } from '@/lib/app'
-import { plural } from '@/lib/format'
+import { formatNumber, plural } from '@/lib/format'
 
 export default function DashboardPage() {
   useDocumentTitle('Dashboard')
@@ -63,7 +63,13 @@ export default function DashboardPage() {
       {error && <ErrorNotice error={error} onRetry={refreshAll} retrying={totals.refreshing || activity.refreshing} className="mb-6" />}
 
       <section aria-label="Totals" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <MetricCard label="Jobs" icon={Briefcase} to="/jobs" value={value(t?.jobs)} hint="Crawled job postings" />
+        <MetricCard
+          label="Jobs"
+          icon={Briefcase}
+          to="/jobs"
+          value={value(t?.jobs)}
+          hint={t && t.realJobs !== null && t.demoJobs !== null ? `${formatNumber(t.realJobs)} real · ${formatNumber(t.demoJobs)} demo` : 'Crawled job postings'}
+        />
         <MetricCard label="Candidates" icon={Users} to="/candidates" value={value(t?.candidates)} hint="Parsed resumes" />
         <MetricCard
           label="Skills"

@@ -34,6 +34,7 @@ AMBIGUOUS_ALIASES: dict[str, tuple[str, ...]] = {
     "excel": ("Excel",),
     "spark": ("Spark",),
     "ml": ("ML",),
+    "sap": ("SAP",),
 }
 NEGATIVE_PHRASES = re.compile(r"r\s?&\s?d|go-to-market|c-level|c-suite|the rest of|on the go")
 

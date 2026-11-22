@@ -77,8 +77,16 @@ def validate_crawl_request(request: CrawlRequest) -> dict:
         raise _invalid("body.seed_url", "the seed URL resolves to a private or reserved address") from None
     except UnresolvableHostError:
         raise _invalid("body.seed_url", "the seed URL's host name does not resolve") from None
-    if request.extractor is not None and request.extractor not in get_registry().names:
-        raise _invalid("body.extractor", f"unknown extractor; choose one of {get_registry().names}")
+    registry = get_registry()
+    if request.extractor is not None and request.extractor not in registry.names:
+        raise _invalid("body.extractor", f"unknown extractor; choose one of {registry.names}")
+    if request.extractor is not None and not registry.get(request.extractor).demo:
+        # A demo site's invented jobs must stay labelled demo (the crawler drops them anyway).
+        demo = registry.demo_site(seed) or next(
+            (site for site in (registry.demo_site(f"https://{host}/") for host in allowed) if site), None)
+        if demo is not None:
+            raise _invalid("body.extractor", f"this crawl reaches a demo site, whose jobs are taken only by the "
+                                             f"{demo.name} extractor; leave the extractor empty")
     return {"seed_url": seed, "max_depth": request.max_depth, "max_pages": request.max_pages,
             "allowed_domains": allowed, "extractor": request.extractor}
 

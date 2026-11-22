@@ -252,7 +252,7 @@ Code: `crawler/fetcher.py`, using httpx with timeouts.
 | HTTP 429 | Retry after `Retry-After` (capped) if present, otherwise back off |
 | HTTP 5xx | Retry with exponential backoff |
 | Other 4xx | No retry: log and skip |
-| Content that is not HTML | No retry: skip |
+| Content that is neither HTML nor JSON | No retry: skip (JSON reaches only extractors that read it, Section 5.16) |
 | Retries used up | Mark the page failed, log a warning, continue the crawl |
 
 Exponential backoff means each wait is longer than the last, for example about 1 s, 2 s, then 4 s, each with a small random jitter so retries do not happen in lock-step.
@@ -277,6 +277,8 @@ class BaseExtractor(Protocol):
 - **Static first.** By default, httpx fetches the HTML and BeautifulSoup parses it. Playwright (headless Chromium) is used only if `render_mode = "browser"` or `needs_browser(url, static_html)` returns true, for example when the job list is empty in the static HTML. Playwright waits for the page to render, then the same `parse` method runs on the rendered HTML.
 - **Same rules in the browser.** Playwright request interception blocks non-allow-listed and private hosts, and skips images, fonts and media for speed. robots.txt and the rate limiter still apply.
 - Extractors **never touch the database**. They return an `ExtractionResult` of raw jobs and links.
+- **JSON job boards** (22 November 2026). An extractor declares `formats`: `("html",)` by default, or `("json",)` for a public job-board API. The fetcher accepts `application/json` as well as HTML; a JSON response given to an HTML extractor is skipped and logged. `greenhouse` (`boards-api.greenhouse.io`) reads Greenhouse's Job Board API and `lever` (`api.lever.co`) Lever's Postings API, each in one request; their seed URLs come from `seed_template` with the board token or company name. `DATA_SOURCES.md` lists the fields each source gives; missing ones stay unknown.
+- **Real and demo sources** (22 November 2026). `demo = True` marks an extractor whose site's jobs are invented (`mock_static`, `mock_dynamic`, `fake_python_jobs`). A job is a real listing only if its `source` is a real-source extractor. The crawler drops jobs that a non-demo extractor finds on a demo extractor's host (with a WARNING), and a crawl request that forces a non-demo extractor onto a demo host is refused (422), so a demo job is never stored as a real one. `GET /sources` lists every extractor with its `label`, `kind` and seed hints.
 
 ## 5.17 From Extracted Data to Stored Jobs
 
@@ -288,8 +290,24 @@ Each raw job goes through the same pipeline before it is saved:
 | 2. Normalize | Strip HTML and extra whitespace from the description; make `apply_url` absolute; turn `posted_date` into an ISO date (relative dates such as "3 days ago" are resolved against the fetch time); parse salary into numbers (keeping the original as `salary_text`); map `job_type` to its allowed values; detect remote jobs (`is_remote`) |
 | 3. Extract skills | Find canonical skills in the description and split them into required and nice-to-have (Part 6) |
 | 4. Validate | The Pydantic `JobRecord` schema checks every field. An invalid record is logged and skipped; the page still counts as processed. |
-| 5. Save | Upsert into `jobs` by `dedup_key` (`INSERT … ON CONFLICT DO UPDATE`), set `background_job_id` and `source_url`, and save the skill links in `job_skills` with their `requirement_level` |
+| 5. Save | Upsert into `jobs` by `dedup_key` (`INSERT … ON CONFLICT DO UPDATE`), set `background_job_id`, `source_url` and `industry` (Section 5.18), and save the skill links in `job_skills` with their `requirement_level` |
 
 Because of the upsert, a job found again later (for example on its detail page after the listing page) updates the same row instead of creating a duplicate (Part 3, Section 3.6).
 
 **Change detection** (for automatic re-matching, Part 7, Section 7.1). Before each upsert, the stored row is read with `SELECT … FOR UPDATE`, together with its skill links; the upsert returns the values stored after it. A job counts as changed for matching when it is new, or when anything matching reads differs: the required or nice-to-have skills (or a skill's level), `min_experience_years`, `location`, `is_remote` or `description` (the text for the TF-IDF tie-breaker). A job fetched again unchanged, an empty value that keeps the stored one, or a change only to columns matching never reads (title, company, salary, dates, job type) does not count. Because of the row lock, a concurrent crawl saving the same job compares against the latest committed values.
+
+## 5.18 Industry Classification
+
+Every job gets one industry (22 November 2026; ADR-028): Software & IT, AI & Data Science, Finance & Banking, Marketing, Sales & Business, Human Resources, Design, Operations & Supply Chain, Healthcare, Education, Engineering, Legal, or Other / Unclassified. Code: `app/industries` (`classifier.py`, rules in `industries.json`). It is a label for browsing and filtering, separate from skill extraction, and never part of a match score.
+
+| Evidence | Points | At most, per industry |
+|---|---|---|
+| A term of the title (e.g. "nurse", "financial", "mechanical engineer") | 3 | 6 |
+| A skill whose taxonomy category belongs to the industry (Python: Software & IT; Payroll: Human Resources); Excel, Agile, Scrum and Jira point nowhere, Figma to Design | 1 | 4 |
+| A term of the description (e.g. "patients", "litigation", "supply chain") | 1 | 3 |
+
+Terms match like skills: lower case, whole words, longest first, no overlaps ("data engineer" is one term; "tax" is not found in "taxi"). Each term counts once. The industry with the most points wins if it has at least 3 and strictly more than the next; otherwise the job is `other` (Other / Unclassified), so weak or tied evidence is never forced into an industry.
+
+**When.** `save_records` classifies each job from the values it will store (the new title; the new description or, if the record has none, the stored one; the new skills or the stored ones) and writes `industry` in the same upsert. `GET /jobs/{id}` recomputes the classification for its `industry_reasons`, e.g. `Title: "nurse" (+3)`, `Skills: BLS, Patient Care (+2)`; if the rules changed since the job was saved, it says so. The rules file is checked when it loads: the 13 codes in order, each term in one industry only, and skill exceptions that name real skills.
+
+**Existing jobs.** Migration `5d2e8c41a7b9` adds the column (default `other`) and classifies the jobs already stored with the same rules, writing only that column. A later change of rules reaches a job when it is crawled again.

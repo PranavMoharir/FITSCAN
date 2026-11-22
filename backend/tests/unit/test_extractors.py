@@ -14,7 +14,8 @@ FETCHED_AT = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
 
 
 def test_registry_discovers_every_plugin_file():
-    assert sorted(e.name for e in discover()) == ["fake_python_jobs", "generic", "mock_dynamic", "mock_static"]
+    assert sorted(e.name for e in discover()) == ["fake_python_jobs", "generic", "greenhouse", "lever", "mock_dynamic",
+                                                  "mock_static"]
 
 
 @pytest.mark.parametrize(

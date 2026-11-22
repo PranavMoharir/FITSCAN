@@ -120,6 +120,25 @@ export interface LogList {
 
 export type JobType = 'full_time' | 'part_time' | 'contract' | 'internship' | 'temporary' | 'unknown'
 
+/** Industry codes (backend app/industries); 'other' is Other / Unclassified. */
+export type Industry =
+  | 'software_it'
+  | 'ai_data'
+  | 'finance_banking'
+  | 'marketing'
+  | 'sales_business'
+  | 'human_resources'
+  | 'design'
+  | 'operations_supply_chain'
+  | 'healthcare'
+  | 'education'
+  | 'engineering'
+  | 'legal'
+  | 'other'
+
+/** real: a real company source; demo: invented jobs from a demo site, never a real opening. */
+export type Listing = 'real' | 'demo'
+
 export interface Salary {
   min: number | null
   max: number | null
@@ -138,17 +157,27 @@ export interface JobSummary {
   required_skills: string[]
   nice_to_have_skills: string[]
   min_experience_years: number | null
+  /** The original posting. */
   apply_url: string
+  /** The extractor that collected the job (GET /sources). */
   source: string
+  listing: Listing
+  industry: Industry
 }
 
 export interface JobDetail extends JobSummary {
   is_remote: boolean
   description: string | null
   salary_text: string | null
+  /** The page or API response the job was read from. */
   source_url: string | null
   created_at: string
   updated_at: string
+}
+
+/** GET /jobs/{id}: the stored job and the evidence for its industry. */
+export interface JobView extends JobDetail {
+  industry_reasons: string[]
 }
 
 export type JobList = Page<JobSummary>
@@ -161,8 +190,32 @@ export interface JobFilters {
   location?: string
   job_type?: JobType
   max_required_years?: number
+  listing?: Listing
+  industry?: Industry
+  source?: string
   sort?: JobSort
   order?: SortOrder
+}
+
+// --- /sources (schemas/source.py) ----------------------------------------------------------------
+
+export interface SourceInfo {
+  /** Stored as jobs.source; the crawl request's `extractor`. */
+  name: string
+  label: string
+  description: string
+  kind: Listing
+  hosts: string[]
+  formats: ('html' | 'json')[]
+  needs_browser: boolean
+  /** A seed URL with one {key} to fill in (job-board APIs). */
+  seed_template: string | null
+  seed_key_label: string | null
+  example_seed: string | null
+}
+
+export interface SourceList {
+  items: SourceInfo[]
 }
 
 // --- /candidates (schemas/candidate.py) ---------------------------------------------------------

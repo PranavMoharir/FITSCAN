@@ -13,6 +13,7 @@ from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Ind
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, in_values
+from app.industries import INDUSTRIES
 
 if TYPE_CHECKING:
     from app.models.background_job import BackgroundJob
@@ -29,10 +30,12 @@ class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
         CheckConstraint(in_values("job_type", JOB_TYPES), name="job_type"),
+        CheckConstraint(in_values("industry", INDUSTRIES), name="industry"),
         CheckConstraint("salary_min <= salary_max", name="salary_range"),  # passes when either is NULL
         CheckConstraint("min_experience_years >= 0", name="min_experience_years_not_negative"),
         Index("ix_jobs_posted_date", "posted_date"),
         Index("ix_jobs_location", "location"),
+        Index("ix_jobs_industry", "industry"),
         Index("ix_jobs_title_trgm", "title", postgresql_using="gin", postgresql_ops={"title": "gin_trgm_ops"}),
         Index("ix_jobs_company_trgm", "company", postgresql_using="gin", postgresql_ops={"company": "gin_trgm_ops"}),
     )
@@ -54,6 +57,8 @@ class Job(Base):
     source: Mapped[str] = mapped_column(Text, nullable=False)
     is_remote: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     source_url: Mapped[str | None] = mapped_column(Text)
+    # Set by the crawler from the title, description and skills (LLD §5.18); "other" = Other / Unclassified.
+    industry: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'other'"))
     dedup_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     background_job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("background_jobs.background_job_id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

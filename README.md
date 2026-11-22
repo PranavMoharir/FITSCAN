@@ -12,15 +12,17 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 
 ## Status
 
-**Phases 1–7 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, the public landing page and the application UI, plus three optional features: adjustable scoring weights, automatic re-matching after crawls and a CI pipeline. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
+**Phases 1–7 done:** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, the public landing page and the application UI, plus three optional features: adjustable scoring weights, automatic re-matching after crawls and a CI pipeline, and real job sources across industries next to the demo sites. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
 
 | Works now | Not built yet |
 |---|---|
-| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | `samples/`, `DATA_SOURCES.md`, `AI_USAGE.md` |
+| `docker compose up` starts the API, worker, PostgreSQL, Redis, UI and the mock job site | `samples/`, `AI_USAGE.md` |
 | The eight tables of [LLD Part 3](docs/LLD/03_Database_Design.md) (SQLAlchemy models + Alembic migration) | Deferred optional features: resuming an interrupted crawl, and embedding-based (semantic) matching |
 | Background jobs: create a crawl, resume or match job, list, detail, logs, cancel; heartbeats and stale-job checks | |
 | Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | |
 | Extractors: Fake Python Jobs, the mock site (static and JavaScript), generic JSON-LD | |
+| Real job sources: company career pages (schema.org `JobPosting`), Greenhouse and Lever job boards (public APIs); demo sites stay and are always labelled demo ([`DATA_SOURCES.md`](DATA_SOURCES.md)) | |
+| Industries: every job is classified (13 industries, or Other / Unclassified) with the evidence shown; filters for real or demo listings, industry and source | |
 | Job validation, de-duplication (upsert by `dedup_key`), skills taxonomy and job skills | |
 | Resume upload: size and `%PDF-` checks per file, UUID storage, one background job per upload | |
 | PDF parsing: one- and two-column layouts, tables, garbled text, OCR of scanned pages (Tesseract) | |
@@ -73,7 +75,14 @@ The answer is `202 Accepted` with a `background_job_id`. Follow it with:
 | `GET /background-jobs/{id}/logs?after_id=0&level=INFO` | Timestamped log lines; pass the last `next_after_id` to get only new ones |
 | `POST /background-jobs/{id}/cancel` | 200 for a queued job, 202 for a running job (it stops after the current page), 409 if already finished |
 
-A real site works the same way, for example `"seed_url": "https://realpython.github.io/fake-jobs/"`. The crawled jobs are in the `jobs` table, and their skills in `job_skills`.
+A real job source works the same way. A Greenhouse or Lever board needs one request, to its public API:
+
+```bash
+curl -X POST http://localhost:8000/background-jobs/crawl -H "Content-Type: application/json" \
+     -d '{"seed_url": "https://boards-api.greenhouse.io/v1/boards/<board token>/jobs?content=true", "max_depth": 1, "max_pages": 1}'
+```
+
+`GET /sources` lists every supported source (real ones first, then the demo sites) and how to build its seed URL; the UI's "New crawl" dialog offers them by name. [`DATA_SOURCES.md`](DATA_SOURCES.md) says what each source gives, its terms and its limits. Crawl only sites you may crawl: robots.txt, the allowed hosts and the private-address guard apply to every source, and FITSCAN never logs in or gets around access controls. The crawled jobs are in the `jobs` table, and their skills in `job_skills`.
 
 ### Upload resumes
 
@@ -149,7 +158,7 @@ curl -OJ "http://localhost:8000/exports/matches?format=csv&top=10"          # th
 
 | Endpoint | Filters (combined with AND) | Sort (`sort`, `order`) |
 |---|---|---|
-| `GET /jobs` | `q` (title or company), `skill`, `location`, `job_type`, `max_required_years` | `posted_date` (default, newest first) or `title` |
+| `GET /jobs` | `q` (title or company), `skill`, `location`, `job_type`, `max_required_years`, `listing` (`real` or `demo`), `industry`, `source` | `posted_date` (default, newest first) or `title` |
 | `GET /candidates` | `q` (name or current title), `skill`, `city` | `name` (default, A to Z) or `years_experience` |
 
 - **Filters.**
@@ -157,6 +166,7 @@ curl -OJ "http://localhost:8000/exports/matches?format=csv&top=10"          # th
   - `skill` accepts aliases ("js" finds JavaScript, "reactjs" finds React) and matches a job's required or nice-to-have skills. A term that isn't a known skill finds nothing.
   - A known city matches all its spellings ("bangalore" finds "Bengaluru").
   - `max_required_years=3` returns jobs asking for at most 3 years, plus jobs with no minimum.
+  - `listing=real` keeps jobs from real company sources, `listing=demo` the invented jobs of the demo sites; every job also carries `listing` and `industry`, and `GET /jobs/{id}` adds `industry_reasons`, the evidence for the industry.
   - A blank filter counts as not set.
 - **Sorting and paging.**
   - Missing values sort last, and equal values are ordered by ID.
@@ -206,7 +216,7 @@ A crawl is a background job: the API saves it as `queued`, commits, and sends Re
 - **Progress** after every page: pages processed / `max_pages`, succeeded and failed counts, and a heartbeat. Pages discovered, jobs extracted and jobs saved are in the log lines.
 - **Stale jobs.** A running job without a heartbeat for `JOB_HEARTBEAT_TIMEOUT_SECONDS`, or a queued job not picked up within `JOB_QUEUED_TIMEOUT_SECONDS` while no job writes heartbeats, is marked `failed` (when the worker starts and whenever jobs are listed). Lost tasks are not re-sent.
 
-Supported sites: [Fake Python Jobs](https://realpython.github.io/fake-jobs/) (`fake_python_jobs`), the mock site (`mock_static`, `mock_dynamic`) and any page with schema.org `JobPosting` JSON-LD (`generic`). To add a site, add `backend/app/extractors/<site>.py` with a `BaseExtractor` subclass.
+Supported sources: company career pages with schema.org `JobPosting` JSON-LD (`generic`), Greenhouse boards (`greenhouse`) and Lever boards (`lever`), read through their public JSON APIs; and the demo sites [Fake Python Jobs](https://realpython.github.io/fake-jobs/) (`fake_python_jobs`) and the mock site (`mock_static`, `mock_dynamic`), whose jobs are always labelled demo. Each job is classified into an industry from its title, skills and description (it never changes a match score). To add a source, add `backend/app/extractors/<site>.py` with a `BaseExtractor` subclass (see [`DATA_SOURCES.md`](DATA_SOURCES.md)).
 
 ## How resume parsing works
 
@@ -355,6 +365,7 @@ Skill extraction is measured on hand-labelled examples (LLD §6.9): job descript
 - search and detail: every filter on its own and combined, aliases and city spellings, literal `%` and `_`, sorting with missing values last, page boundaries, the exact response fields, two queries per page and one per detail read, 404 and 422, no internal or private columns, and `/skills`;
 - exports: headers and filenames, empty exports, the same rows and order as the search, CSV quoting of commas, quotes and line breaks, formula-injection protection (CSV only), streaming in small batches, the match table against the stored matches and `/candidates/{id}/matches` (rank, score, breakdown, explanation), `top` and the candidate filters, and a check that no search, detail or export request starts a match run or changes a match;
 - a full match run through the API with the real `match` task: every pair stored with one `computed_at`, the edge cases in the database, reruns that replace every row, cancellation and failures that keep the previous matches, two runs saving at the same time, the heartbeat before the final write, no personal data in the logs, both top-10 routes (shape, limit, 404), the API order against the ranking rule on data with many ties, and the score-precision cases through PostgreSQL;
+- real job sources: Greenhouse, Lever and career-page fixtures crawled through the API (fields, industries, real listings, original posting), no duplicates on re-crawl, real and demo jobs side by side with the new filters, the source columns in exports, one matching engine for both kinds, demo hosts refused for real-source extractors, and the industry migration on existing jobs;
 - adjustable weights and automatic re-matching: custom weights give exact scores, the active weights (failed and cancelled runs never change them), change detection for every value matching reads, the crawl trigger rules (completed, failed, cancelled, no candidates, `AUTO_REMATCH=false`), no duplicate runs under concurrent requests, a broker failure that leaves the crawl unchanged, and an older run never overwriting newer results.
 
 They are skipped unless `TEST_DATABASE_URL` is set. With the dev override running (step 1 of *Local development*):
@@ -401,6 +412,8 @@ The `api` container runs `alembic upgrade head` every time it starts; on an up-t
 
 The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates the eight tables with their keys, unique, check and partial indexes, and enables the PostgreSQL `pg_trgm` extension used by the trigram search indexes. `alembic downgrade base` removes all of it again. After changing a model, `alembic check` reports whether a new migration is needed.
 
+The second migration, `5d2e8c41a7b9_job_industry.py`, adds `jobs.industry` (indexed, limited to the 13 industry codes, default `other`) and classifies the jobs that already exist; it writes only that column. The `api` container applies it on its next start; `alembic downgrade 98acdef52211` removes the column again.
+
 ## Project structure
 
 ```text
@@ -416,17 +429,18 @@ The first migration, `alembic/versions/98acdef52211_initial_schema.py`, creates 
 │   │   ├── main.py           # FastAPI app: routers, CORS, error handlers
 │   │   ├── config.py         # settings from environment variables
 │   │   ├── errors.py         # standard error envelope
-│   │   ├── api/              # routers: health, background_jobs, jobs, candidates, skills, exports, matching; upload_limit
+│   │   ├── api/              # routers: health, background_jobs, jobs, candidates, skills, exports, matching, sources; upload_limit
 │   │   ├── schemas/          # Pydantic request/response models, JobRecord, CandidateRecord
 │   │   ├── db/               # engine, sessions, Base (constraint naming)
 │   │   ├── models/           # SQLAlchemy models: the eight tables of LLD Part 3
 │   │   ├── services/         # background-job control, stale-job checks, search, top-10 match queries, export, upload retention
 │   │   ├── worker/           # Celery app, crawl, resume and match tasks, state/progress/log helpers
 │   │   ├── crawler/          # BFS frontier, fetcher, robots, rate limiter, URLs, SSRF, browser, pipeline
-│   │   ├── extractors/       # plug-ins: base, registry, generic, fake_python_jobs, mock_static, mock_dynamic
+│   │   ├── extractors/       # plug-ins: base, registry, generic, greenhouse, lever, fake_python_jobs, mock_static, mock_dynamic
 │   │   ├── resumes/          # validation, text_extraction, ocr, fields, pipeline
 │   │   ├── locations/        # cities.json and the city normalizer (candidates and job locations)
 │   │   ├── skills/           # taxonomy.json, normalizer, extractor, sync
+│   │   ├── industries/       # industries.json (rules) and the industry classifier
 │   │   └── matching/         # scoring (exact), explanation, ranking, tfidf (tie-breaker), engine (the match run)
 │   └── tests/                # unit/ (offline), integration/ (PostgreSQL), fixtures/html, resume_pdfs.py (synthetic PDFs)
 ├── mock-site/                # optional demo job site (static + JavaScript pages, robots.txt)

@@ -7,7 +7,7 @@ OpenAPI docs are generated automatically at /docs and /openapi.json.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import background_jobs, candidates, exports, health, jobs, matching, skills
+from app.api import background_jobs, candidates, exports, health, jobs, matching, skills, sources
 from app.api.upload_limit import RequestTooLarge, UploadSizeLimit, handle_request_too_large
 from app.config import get_settings
 from app.errors import register_error_handlers
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(skills.router)
     app.include_router(exports.router)
     app.include_router(matching.router)
+    app.include_router(sources.router)
     return app
 
 
