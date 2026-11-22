@@ -226,11 +226,16 @@ def find_title(extracted: ExtractedText, name_line: Line | None, experience: lis
             if below.page == name_line.page and looks_like_title(below.text, cities):
                 return below.text[:200]
     for line in experience:
-        text = line.text
-        if text.lstrip().startswith(("-", "•", "*", "–")) or len(text.split()) > 12:
+        text = line.text.strip()
+        # Words of the line without its dates and separators: "Acme Pvt. Ltd. - Data Intern | Pune, MH |
+        # May 2025 - Jun 2025" is a short entry line even though it has many tokens.
+        words = [w for w in _DATE_RANGE_TEXT.sub(" ", text).split() if any(ch.isalnum() for ch in w)]
+        if text.startswith(("-", "•", "*", "–")) or len(words) > 12:
             continue
-        if not _DATE_RANGE_TEXT.sub("", text).strip(" -–—|,()"):
+        if not words:
             continue  # a line with only dates
+        if text[:1].islower():
+            continue  # the wrapped end of a bullet or sentence ("into Water, Bare Soil, ..."), not an entry
         return role_from_experience_line(text)
     return None
 

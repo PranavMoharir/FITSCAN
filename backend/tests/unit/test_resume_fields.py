@@ -160,6 +160,30 @@ def test_the_title_falls_back_to_the_first_role_in_experience():
     assert fields(text).current_title == "Data Engineer"
 
 
+def test_a_long_entry_line_gives_the_role_and_a_wrapped_bullet_line_is_never_a_title():
+    """Regression: a role line with company, place and dates has many tokens, and the next bullet wraps
+    onto a line without a bullet mark. The role must come from the entry line, never from the wrapped text."""
+    text = ("# Ravi Shah\nravi@example.com | +91 98765 43210 | linkedin.com/in/ravishah\nExperience\n"
+            "Initech Pvt. Ltd. - Data Analyst Intern | Nagpur, Maharashtra | May 2025 - Jun 2025\n"
+            "• Built a classifier for warehouse photos that sorts every image\n"
+            "into Boxes, Pallets, Shelves, and Empty classes.")
+    assert fields(text).current_title == "Data Analyst Intern"
+
+
+def test_a_wrapped_line_is_skipped_even_without_an_entry_line():
+    text = "# Ravi Shah\nravi@example.com\nExperience\n• Built dashboards for the finance team and\nmigrated reports to Power BI."
+    assert fields(text).current_title is None
+
+
+def test_cities_of_education_and_experience_entries_are_not_the_candidate_city():
+    """Regression: with no city in the contact lines or a Location line, the city stays unknown. A university
+    or internship location is not where the candidate lives, so it is never guessed from those lines."""
+    text = ("# Ravi Shah\nravi@example.com | +91 98765 43210\nEducation\n"
+            "Sample Institute of Technology - B.Tech | Jaipur, Rajasthan | 2022 - 2026\nExperience\n"
+            "Initech Pvt. Ltd. - Data Intern | Nagpur, Maharashtra | May 2025 - Jun 2025")
+    assert fields(text).city is None
+
+
 def test_a_location_under_the_name_is_not_a_title():
     text = "# Ravi Shah\nPune, India\nExperience\nQA Engineer, Hooli (2020 - 2023)"
     assert fields(text).current_title == "QA Engineer"
