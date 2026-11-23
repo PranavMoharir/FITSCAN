@@ -1,0 +1,18 @@
+# Runs deploy/backup.sh once (deploy/README.md, "Backups and restore"); started daily by fitscan-backup.timer.
+# Assumes the user `ubuntu` and the repository in /home/ubuntu/FITSCAN, as in the guide: change User, Group
+# and the two paths below if yours differ. Output goes to the journal: journalctl -u fitscan-backup
+[Unit]
+Description=FITSCAN database backup (deploy/backup.sh)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+# Access to the Docker socket for this service only; the user does not need to be in the docker group.
+SupplementaryGroups=docker
+WorkingDirectory=/home/ubuntu/FITSCAN
+ExecStart=/bin/bash /home/ubuntu/FITSCAN/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle

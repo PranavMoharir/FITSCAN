@@ -36,7 +36,7 @@ Other free options were rejected because they cannot run FITSCAN's background wo
 
 1. **Oracle Cloud account:** sign up for the Free Tier at oracle.com/cloud/free, verify the card, choose a home region near you.
 2. **DuckDNS name:** sign in at duckdns.org (GitHub, Google and others are offered), create a sub-domain such as `fitscan-demo`, and note the token shown on the page.
-3. **Repository access for the server:** the repository is private, so the server needs a read-only deploy key (step 4).
+3. **Repository access for the server:** none for a public repository; a private one needs a read-only deploy key (step 4).
 4. **The login** for the password prompt: a user name and a long random password, kept in a password manager.
 
 ## 1. Create the virtual machine
@@ -185,6 +185,9 @@ source ~/.bashrc
 dc config --quiet && echo "configuration OK"   # checks both files and .env; prints no values
 ```
 
+The alias needs the `docker` group from step 3 (`id -nG` lists it after logging in again). Without the group, write
+`sudo docker compose` in the alias instead.
+
 Build the images **one at a time**, then start the stack. `up --build` would build all four at once, which can run a 4 GB
 server out of memory; one after the other, `worker` also reuses the Python layers that `api` has just built:
 
@@ -212,6 +215,9 @@ curl -s https://<name>.duckdns.org/api/health                # {"status":"ok","d
 curl -s -o /dev/null -w "%{http_code}\n" https://<name>.duckdns.org/api/candidates   # 401: password required
 curl -s -o /dev/null -w "%{http_code}\n" -u '<login>' https://<name>.duckdns.org/api/docs   # 404: docs are off
 ```
+
+The health check is under `/api/`. Without the prefix, `https://<name>.duckdns.org/health` is an ordinary path of the
+frontend: it asks for the login and then returns the application's HTML page, not JSON.
 
 Open `https://<name>.duckdns.org` in a browser: it asks for the login, then shows the landing page; the application is at
 `/app`. The API is at `https://<name>.duckdns.org/api/...`.
@@ -263,6 +269,7 @@ dc stop mock-site && dc up -d api worker
 | Caching | `Cache-Control: no-store` on every API response (candidates, logs, exports) |
 | Headers | `Content-Security-Policy` (scripts, fonts and API calls from the same origin only; no framing), `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`; no `Server` header |
 | Network | Only the proxy publishes ports; PostgreSQL, Redis, the API, the worker and the frontend are reachable only inside Docker |
+| CPU | The proxy may use at most one of the two CPUs (`cpus: 1.0` in docker-compose.prod.yml): each wrong password costs about 1 s of bcrypt work, so a flood of login attempts cannot starve the API, the database and the worker |
 
 The application keeps its own protections: uploaded resumes are stored under random names and never served, responses
 never contain file paths or resume text, failures show no stack traces, and logs contain no resume words. Job details and
@@ -283,28 +290,43 @@ names, with progress (counts, public URLs, retries, failure summaries) kept.
 
 ## Backups and restore
 
-Backups go to `~/backups`, outside the repository folder, so a dump can never end up in Git. The commands take the
-database name and user from the `db` container, so they work with whatever names `.env` uses.
+Backups go to `~/backups`, outside the repository folder, so a dump can never end up in Git; the folder and the dumps
+are readable only by you. [`deploy/backup.sh`](backup.sh) writes each dump under a temporary name, checks that it can be
+read, and only then gives it its final name, so a failed dump never looks like a good one. It deletes dumps older than
+14 days (`BACKUP_KEEP_DAYS`), takes the database name and user from the `db` container, and prints no values.
 
 ```bash
-mkdir -p ~/backups && chmod 700 ~/backups
-dc exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > ~/backups/fitscan-$(date +%F).dump
-dc exec -T db pg_restore --list < ~/backups/fitscan-$(date +%F).dump | head -5   # a readable dump lists its contents
+bash deploy/backup.sh   # Backup written: /home/ubuntu/backups/fitscan-<date>_<time>.dump (...)
 ```
 
-Copy each dump off the server; on your laptop:
+**Daily backups.** A systemd timer runs the script every day at 03:00 server time (UTC) and catches up on a run missed
+while the server was off. It needs neither cron (not installed on the Oracle image) nor the `docker` group. The unit
+assumes the user `ubuntu` and `/home/ubuntu/FITSCAN`; edit
+[`deploy/systemd/fitscan-backup.service`](systemd/fitscan-backup.service) first if yours differ.
 
 ```bash
-scp ubuntu@<vm-public-ip>:~/backups/fitscan-<date>.dump .
+sudo cp deploy/systemd/fitscan-backup.service deploy/systemd/fitscan-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now fitscan-backup.timer
+sudo systemctl start fitscan-backup.service      # one backup now, to test the unit
+journalctl -u fitscan-backup -n 5 --no-pager     # "Backup written: ..."
+systemctl list-timers fitscan-backup.timer       # the next run
+```
+
+A dump on the VM is lost with the VM, so copy the dumps to your laptop regularly (add `-i <private-key>` if your SSH key
+is not the default one):
+
+```bash
+scp "ubuntu@<vm-public-ip>:~/backups/fitscan-*.dump" .
 ```
 
 **Check that a dump can be restored** (once, after the first backup). This restores into a separate, temporary database
-and deletes it again; the live database is not touched:
+and deletes it again; the live database is not touched. `<file>` is a dump in `~/backups` (`ls ~/backups`):
 
 ```bash
 dc exec -T db sh -c 'createdb -U "$POSTGRES_USER" restore_check'
-dc exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d restore_check --no-owner' < ~/backups/fitscan-<date>.dump
-dc exec -T db sh -c 'psql -U "$POSTGRES_USER" -d restore_check -Atc "select count(*) from jobs"'   # the number of jobs
+dc exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d restore_check --no-owner' < ~/backups/<file>
+dc exec -T db sh -c 'psql -U "$POSTGRES_USER" -d restore_check -Atc "select count(*) from skills"'   # 147 or more
 dc exec -T db sh -c 'dropdb -U "$POSTGRES_USER" restore_check'
 ```
 
@@ -313,7 +335,7 @@ nothing writes during the restore; `--single-transaction` applies the whole dump
 
 ```bash
 dc stop api worker
-dc exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --single-transaction' < ~/backups/fitscan-<date>.dump
+dc exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --single-transaction' < ~/backups/<file>
 dc up -d
 ```
 
@@ -325,14 +347,9 @@ dc exec -T api tar -C /data/uploads -xzf - < ~/backups/uploads-<date>.tgz       
 ```
 
 The certificates (`caddy_data`) need no backup: Caddy requests new ones if the volume is lost. An Oracle boot-volume
-backup (five are free) covers all volumes at once, because they are stored on the boot volume.
-
-**Daily backups (optional).** Run `crontab -e` and add this line; it keeps the last 14 days (`%` must be written `\%` in
-a crontab):
-
-```text
-0 3 * * * cd ~/FITSCAN && docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > ~/backups/fitscan-$(date +\%F).dump && find ~/backups -name 'fitscan-*.dump' -mtime +14 -delete
-```
+backup covers all volumes at once, because they are stored on the boot volume: **Compute → Instances → the VM → Boot
+volume → Boot volume backups → Create**. Five volume backups are free in total; delete the oldest before making a sixth,
+and do not attach a backup policy (the built-in policies keep more than five).
 
 If Redis ever exits on the VM with "Your kernel has a bug that could lead to data corruption during background save"
 (Redis's ARM64 self-test), update the kernel (`sudo apt-get update && sudo apt-get full-upgrade && sudo reboot`). Do not

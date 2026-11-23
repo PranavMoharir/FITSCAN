@@ -68,6 +68,9 @@ services:
     # Two worker processes instead of one per CPU: each process can start its own Chromium,
     # and crawls mostly wait on the network and the per-domain rate limit anyway.
     command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    # A minimal init process (Docker's tini) runs as PID 1 and reaps exited child processes. Without
+    # it, Chromium helper processes that outlive their parent stay behind as zombies under Celery.
+    init: true
     env_file: .env
     environment: *backend-environment
     volumes:

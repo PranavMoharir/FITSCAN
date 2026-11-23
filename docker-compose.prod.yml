@@ -38,6 +38,10 @@ services:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data # certificates and the ACME account: keep this volume
       - caddy_config:/config
+    # At most one of the server's two CPUs. Every wrong password costs a bcrypt check of about 1 s of
+    # CPU (measured on the A1 VM; unknown user names cost the same), so a flood of login attempts could
+    # otherwise keep both CPUs busy. With this limit the API, the database and the worker keep the other.
+    cpus: 1.0
     depends_on:
       api:
         condition: service_healthy
