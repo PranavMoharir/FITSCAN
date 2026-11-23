@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     max_upload_request_mb: int = Field(default=50, ge=2)  # all files of one request together, checked while streaming
     pdf_max_pages: int = Field(default=20, ge=1)  # longer PDFs fail: limits the damage of "PDF bomb" files
 
-    # Crawler (used once the crawler is implemented)
+    # Crawler (LLD Part 5)
     crawler_user_agent: str = "FITSCAN-JobMatcher/0.1"
     crawler_default_delay_seconds: float = Field(default=1.0, ge=0)
     crawler_max_retries: int = Field(default=3, ge=0)

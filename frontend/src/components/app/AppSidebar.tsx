@@ -21,37 +21,56 @@ function WithTooltip({ label, collapsed, children }: { label: string; collapsed:
   )
 }
 
-function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed: boolean; onNavigate?: () => void }) {
+type SidebarNavLinkProps = Omit<React.ComponentProps<typeof NavLink>, 'to' | 'end' | 'className' | 'children'> & {
+  item: NavItem
+  collapsed: boolean
+  className?: string
+}
+
+/**
+ * The NavLink with its active-state classes computed inside. A collapsed item sits in a tooltip trigger
+ * (`asChild`), whose Radix Slot joins `className` values as strings: a class function handed to NavLink
+ * there would reach the DOM as text and none of these classes would apply. The Slot's own props (ref,
+ * handlers, data-state, any class) pass through to the link.
+ */
+function SidebarNavLink({ item, collapsed, className, ...props }: SidebarNavLinkProps) {
   const Icon = item.icon
   return (
+    <NavLink
+      {...props}
+      to={item.to}
+      end={item.to === '/app'}
+      className={({ isActive }) =>
+        cn(
+          itemBase,
+          collapsed ? 'justify-center px-0' : 'px-3',
+          isActive ? 'bg-accent-solid/[0.13] text-foreground' : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground',
+          className,
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span
+            aria-hidden="true"
+            className={cn(
+              'absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent-solid transition-opacity duration-200',
+              isActive ? 'opacity-100' : 'opacity-0',
+              collapsed && '-left-3',
+            )}
+          />
+          <Icon className={cn('size-[18px] shrink-0 transition-colors duration-150', isActive ? 'text-accent-ink' : 'text-subtle-foreground group-hover:text-foreground')} aria-hidden="true" />
+          <span className={cn(collapsed && 'sr-only')}>{item.label}</span>
+        </>
+      )}
+    </NavLink>
+  )
+}
+
+function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed: boolean; onNavigate?: () => void }) {
+  return (
     <WithTooltip label={item.label} collapsed={collapsed}>
-      <NavLink
-        to={item.to}
-        end={item.to === '/app'}
-        onClick={onNavigate}
-        className={({ isActive }) =>
-          cn(
-            itemBase,
-            collapsed ? 'justify-center px-0' : 'px-3',
-            isActive ? 'bg-accent-solid/[0.13] text-foreground' : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground',
-          )
-        }
-      >
-        {({ isActive }) => (
-          <>
-            <span
-              aria-hidden="true"
-              className={cn(
-                'absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent-solid transition-opacity duration-200',
-                isActive ? 'opacity-100' : 'opacity-0',
-                collapsed && '-left-3',
-              )}
-            />
-            <Icon className={cn('size-[18px] shrink-0 transition-colors duration-150', isActive ? 'text-accent-ink' : 'text-subtle-foreground group-hover:text-foreground')} aria-hidden="true" />
-            <span className={cn(collapsed && 'sr-only')}>{item.label}</span>
-          </>
-        )}
-      </NavLink>
+      <SidebarNavLink item={item} collapsed={collapsed} onClick={onNavigate} />
     </WithTooltip>
   )
 }

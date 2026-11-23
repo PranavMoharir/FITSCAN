@@ -43,7 +43,7 @@ Also in this README: [architecture and design decisions](#architecture-and-desig
 
 ## Quick start (Docker)
 
-Requires Docker Desktop (or Docker Engine with Compose v2). Get the code with `git clone https://github.com/PranavMoharir/FITSCAN.git` (the repository is private, so GitHub asks for an account that has been given access). Then, in the `FITSCAN` folder, setup is two commands:
+Requires Docker Desktop (or Docker Engine with Compose v2). Get the code with `git clone https://github.com/PranavMoharir/FITSCAN.git`. Then, in the `FITSCAN` folder, setup is two commands:
 
 ```bash
 cp .env.example .env

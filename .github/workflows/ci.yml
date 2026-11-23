@@ -114,3 +114,6 @@ jobs:
 
       - name: Type-check and build for production
         run: npm run build  # tsc -b && vite build
+
+      - name: Check the sidebar's link classes (full and collapsed)
+        run: npm run check:sidebar

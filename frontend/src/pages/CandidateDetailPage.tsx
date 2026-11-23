@@ -17,7 +17,20 @@ import { useResource } from '@/hooks/useResource'
 import { formatDateTime, formatYears } from '@/lib/format'
 import { OcrBadge } from '@/components/app/OcrBadge'
 
-const linkClass = 'break-all text-accent-ink underline-offset-4 hover:underline'
+const linkClass = 'break-words text-accent-ink underline-offset-4 hover:underline'
+
+/** An email with a line break allowed after the @, so a long address wraps as "name@" / "domain". */
+function EmailText({ email }: { email: string }) {
+  const at = email.indexOf('@')
+  if (at < 0) return email
+  return (
+    <>
+      {email.slice(0, at + 1)}
+      <wbr />
+      {email.slice(at + 1)}
+    </>
+  )
+}
 
 export default function CandidateDetailPage() {
   const { id = '' } = useParams()
@@ -81,7 +94,7 @@ export default function CandidateDetailPage() {
             {c ? (
               <Facts
                 items={[
-                  ['Email', c.email ? <a href={`mailto:${c.email}`} className={linkClass}>{c.email}</a> : 'Not found'],
+                  ['Email', c.email ? <a href={`mailto:${c.email}`} className={linkClass}><EmailText email={c.email} /></a> : 'Not found'],
                   ['Phone', c.phone ? <a href={`tel:${c.phone}`} className={linkClass}>{c.phone}</a> : 'Not found'],
                   ['City', c.city ?? 'Not found'],
                   ['Current title', c.current_title ?? 'Not found'],
