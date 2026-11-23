@@ -9,7 +9,10 @@
 # Slow layers (packages, browser) come before the application code, so a code change only
 # rebuilds the last layer.
 
-FROM python:3.12-slim AS deps
+# Pinned to the Debian release (trixie), not just python:3.12-slim: `playwright install --with-deps`
+# below installs Chromium's system libraries for this release, so a silent base-image change cannot
+# break the worker build.
+FROM python:3.12-slim-trixie AS deps
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

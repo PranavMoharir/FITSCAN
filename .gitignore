@@ -26,6 +26,9 @@ dist/
 uploads/
 # Synthetic sample resumes written by `python -m tests.resume_pdfs sample-resumes`
 backend/sample-resumes/
+# Database backups (pg_dump). deploy/README.md keeps them in ~/backups, outside the repository;
+# this rule is a second safeguard if one is ever written inside it.
+*.dump
 
 # Design previews and screenshots (Oil UI design workflow)
 .oil-ui/

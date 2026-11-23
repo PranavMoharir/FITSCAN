@@ -36,7 +36,7 @@ Other free options were rejected because they cannot run FITSCAN's background wo
 
 1. **Oracle Cloud account:** sign up for the Free Tier at oracle.com/cloud/free, verify the card, choose a home region near you.
 2. **DuckDNS name:** sign in at duckdns.org (GitHub, Google and others are offered), create a sub-domain such as `fitscan-demo`, and note the token shown on the page.
-3. **Repository access for the server:** the repository is private, so the server needs a read-only deploy key (step 5).
+3. **Repository access for the server:** the repository is private, so the server needs a read-only deploy key (step 4).
 4. **The login** for the password prompt: a user name and a long random password, kept in a password manager.
 
 ## 1. Create the virtual machine
@@ -85,11 +85,55 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 sudo usermod -aG docker "$USER"   # then log out and in again
 ```
 
-`docker compose version` must show 2.24.4 or newer. Oracle's Ubuntu images also have a host firewall (iptables) that allows only SSH; Docker adds its own rules for published ports, so 80 and 443 normally work. If HTTPS cannot be reached in step 7 although the security list allows it, open them on the host as well:
+`docker compose version` must show 2.24.4 or newer.
+
+Oracle's Ubuntu images also have a host firewall (iptables) that allows only SSH. It does not block the proxy: Docker
+publishes ports 80 and 443 through its own forwarding rules (not the `INPUT` chain) and puts them in front of the image's
+rules every time it starts. If HTTPS cannot be reached in step 7 although the security list allows it, check that Docker's
+rules come first, and restart Docker if they are missing:
 
 ```bash
-sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -m state --state NEW -j ACCEPT
-sudo netfilter-persistent save
+sudo iptables -L FORWARD -n --line-numbers | head -6   # Docker's chains (DOCKER-USER, DOCKER-FORWARD or DOCKER) before any REJECT
+sudo systemctl restart docker                           # re-creates Docker's rules; the containers start again by themselves
+```
+
+Do not run `sudo netfilter-persistent save` while Docker is running: it would copy Docker's own rules into the firewall
+that is loaded at boot.
+
+### Prepare the server for 4 GB of memory (once, before the first build)
+
+**Swap.** Building the images while other containers run can need more than 4 GB. Check with `free -h`; if `Swap` shows
+`0B`, add a 4 GB swap file:
+
+```bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab   # keep it after a reboot
+swapon --show                                                # /swapfile, 4G
+```
+
+**Log rotation.** Docker keeps container logs without a size limit. The setting applies to containers created after the
+restart, so make it before step 6. On a new server `/etc/docker/daemon.json` does not exist yet; if it does, add the two
+settings to it instead of replacing it:
+
+```bash
+echo '{"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "5"}}' | sudo tee /etc/docker/daemon.json
+sudo systemctl restart docker
+sudo docker info --format '{{.LoggingDriver}}'               # json-file
+```
+
+Each container then keeps at most five log files of 10 MB.
+
+**Memory overcommit for Redis.** Redis saves its data in the background with a copy of its own process. Without this
+setting a save can fail when memory is tight, and Redis then refuses new jobs until a save succeeds. It is Redis's own
+recommendation:
+
+```bash
+echo 'vm.overcommit_memory = 1' | sudo tee /etc/sysctl.d/99-fitscan-redis.conf
+sudo sysctl --system
+sysctl vm.overcommit_memory                                  # vm.overcommit_memory = 1
 ```
 
 ## 4. Get the code
@@ -104,6 +148,9 @@ cd FITSCAN
 git config core.sshCommand "ssh -i ~/.ssh/fitscan_deploy -o IdentitiesOnly=yes"   # for later `git pull`
 ```
 
+If the repository is public, no key is needed: `git clone https://github.com/<owner>/<repository>.git FITSCAN`, then
+`cd FITSCAN`.
+
 ## 5. Configure
 
 ```bash
@@ -116,23 +163,45 @@ nano .env
 ```
 
 In `.env`, replace every `<...>`: `FITSCAN_DOMAIN` (the host name only), `BASIC_AUTH_USER`, `BASIC_AUTH_HASH` (keep the
-single quotes), `POSTGRES_PASSWORD`, and the same password inside `DATABASE_URL`. The password itself never goes into a
-file on the server, only its hash.
+single quotes) and `POSTGRES_PASSWORD`. Leave `AUTO_REMATCH=false`: in production, match runs start by hand. The login
+password itself never goes into a file on the server, only its hash.
+
+Then check the file. The check reads it as text and prints key names only, never a value. It fails on a `<...>`
+placeholder left in, a hash without single quotes, a database password that is short or not URL-safe, a host name with
+`https://` or a path, `AUTO_REMATCH` other than `false`, a key set twice, Windows line endings, or a `.env` tracked by Git:
+
+```bash
+bash deploy/check-env.sh        # must end with "All checks passed"; fix every FAIL line and run it again
+```
 
 ## 6. Start
 
+Always use both `-f` files. A short alias, saved so that it also works in later SSH sessions, does that; every command
+below uses it:
+
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+echo "alias dc='docker compose -f docker-compose.yml -f docker-compose.prod.yml'" >> ~/.bashrc
+source ~/.bashrc
+dc config --quiet && echo "configuration OK"   # checks both files and .env; prints no values
 ```
 
-The first build takes about 15–25 minutes on the A1 VM (the worker image downloads headless Chromium; the proxy image
-compiles Caddy with its rate-limit plugin). Later starts take seconds. The stack runs as the Compose project
-`fitscan-prod`, so its volumes (`fitscan-prod_pgdata`, `fitscan-prod_uploads`, ...) start new and empty and are separate
-from any local development stack. Always use both `-f` files (or the alias below). To save typing:
+Build the images **one at a time**, then start the stack. `up --build` would build all four at once, which can run a 4 GB
+server out of memory; one after the other, `worker` also reuses the Python layers that `api` has just built:
 
 ```bash
-alias dc='docker compose -f docker-compose.yml -f docker-compose.prod.yml'
-dc ps        # every service "healthy"; only proxy shows ports (80, 443)
+dc build proxy       # compiles Caddy with its rate-limit plugin
+dc build frontend
+dc build api
+dc build worker      # installs Tesseract and downloads headless Chromium: the slowest
+dc up -d
+```
+
+The first builds are slow; later starts take seconds. The stack runs as the Compose project `fitscan-prod`, so its
+volumes (`fitscan-prod_pgdata`, `fitscan-prod_uploads`, ...) start new and empty and are separate from any local
+development stack.
+
+```bash
+dc ps              # every service "healthy"; only proxy shows ports (80, 443)
 dc logs -f proxy   # "certificate obtained successfully" for your domain
 ```
 
@@ -168,7 +237,8 @@ folder to the server. Use only invented data:
 2. **Resumes.** On your laptop, generate the synthetic PDFs: `cd backend && python -m tests.resume_pdfs sample-resumes`
    (one column, two columns, a skills table, a scanned page, an encrypted and a corrupt file; the people are invented).
    Upload them with **Upload resumes**. Do not upload any real person's resume, including your own.
-3. **Matches.** **Recompute matches** (or let `AUTO_REMATCH=true` start a run after the crawl).
+3. **Matches.** **Recompute matches** after the crawl and the uploads. Production keeps `AUTO_REMATCH=false`, so no match
+   run starts by itself.
 
 The optional mock site (static and JavaScript pages) is off in production. To crawl it once:
 
@@ -204,12 +274,65 @@ names, with progress (counts, public URLs, retries, failure summaries) kept.
 | Task | Command |
 |---|---|
 | Logs | `dc logs -f --tail 100 proxy api worker` |
-| Update to the latest commit | `git pull && dc up -d --build` |
-| Back up the database | `dc exec -T db pg_dump -U fitscan -Fc matching > fitscan-$(date +%F).dump`, then copy it off the server |
+| Update to the latest commit | `git pull`, then `bash deploy/check-env.sh`, then the four `dc build` commands and `dc up -d` from step 6; `docker image prune -f` then removes the old images |
+| Back up and restore the database | See [Backups and restore](#backups-and-restore) below |
 | Delete old uploads (dry run first) | `dc exec api python -m app.services.upload_retention`, then add `--delete` |
-| Change the login | Make a new hash (step 5), put it in `.env`, then `dc up -d proxy` |
-| Stop (data is kept in volumes) | `dc down` |
+| Change the login | Make a new hash (step 5), put it in `.env`, run `bash deploy/check-env.sh`, then `dc up -d proxy` |
+| Stop (data is kept in volumes) | `dc down`. Never `dc down -v`: it deletes the database, the uploads and the certificates |
 | Operating-system updates | `sudo apt-get update && sudo apt-get upgrade` (Ubuntu also installs security updates automatically) |
+
+## Backups and restore
+
+Backups go to `~/backups`, outside the repository folder, so a dump can never end up in Git. The commands take the
+database name and user from the `db` container, so they work with whatever names `.env` uses.
+
+```bash
+mkdir -p ~/backups && chmod 700 ~/backups
+dc exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > ~/backups/fitscan-$(date +%F).dump
+dc exec -T db pg_restore --list < ~/backups/fitscan-$(date +%F).dump | head -5   # a readable dump lists its contents
+```
+
+Copy each dump off the server; on your laptop:
+
+```bash
+scp ubuntu@<vm-public-ip>:~/backups/fitscan-<date>.dump .
+```
+
+**Check that a dump can be restored** (once, after the first backup). This restores into a separate, temporary database
+and deletes it again; the live database is not touched:
+
+```bash
+dc exec -T db sh -c 'createdb -U "$POSTGRES_USER" restore_check'
+dc exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d restore_check --no-owner' < ~/backups/fitscan-<date>.dump
+dc exec -T db sh -c 'psql -U "$POSTGRES_USER" -d restore_check -Atc "select count(*) from jobs"'   # the number of jobs
+dc exec -T db sh -c 'dropdb -U "$POSTGRES_USER" restore_check'
+```
+
+**Restore the live database from a dump.** This replaces everything in it. Stop the API and the worker first, so that
+nothing writes during the restore; `--single-transaction` applies the whole dump or nothing:
+
+```bash
+dc stop api worker
+dc exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --single-transaction' < ~/backups/fitscan-<date>.dump
+dc up -d
+```
+
+**Uploaded resumes** are in the `uploads` volume, not in the database. To keep them as well:
+
+```bash
+dc exec -T api tar -C /data/uploads -czf - . > ~/backups/uploads-$(date +%F).tgz
+dc exec -T api tar -C /data/uploads -xzf - < ~/backups/uploads-<date>.tgz          # restore
+```
+
+The certificates (`caddy_data`) need no backup: Caddy requests new ones if the volume is lost. An Oracle boot-volume
+backup (five are free) covers all volumes at once, because they are stored on the boot volume.
+
+**Daily backups (optional).** Run `crontab -e` and add this line; it keeps the last 14 days (`%` must be written `\%` in
+a crontab):
+
+```text
+0 3 * * * cd ~/FITSCAN && docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > ~/backups/fitscan-$(date +\%F).dump && find ~/backups -name 'fitscan-*.dump' -mtime +14 -delete
+```
 
 If Redis ever exits on the VM with "Your kernel has a bug that could lead to data corruption during background save"
 (Redis's ARM64 self-test), update the kernel (`sudo apt-get update && sudo apt-get full-upgrade && sudo reboot`). Do not

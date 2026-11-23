@@ -484,8 +484,11 @@ FITSCAN can run around the clock on one free **Oracle Cloud Always Free** Arm VM
 
 ```bash
 cp deploy/production.env.example .env      # then fill in the host name, the login's bcrypt hash and a database password
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+bash deploy/check-env.sh                    # refuses placeholders and unsafe values; prints key names only
 ```
+
+Then build the images one at a time and start the stack, as in steps 3–6 of the guide (a 4 GB server also needs the swap
+file and log limits set up there).
 
 [`docker-compose.prod.yml`](docker-compose.prod.yml) changes only what production needs; plain `docker compose up` stays as it is:
 

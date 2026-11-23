@@ -1,6 +1,7 @@
 # Production override for a public server (README "Deploy publicly", deploy/README.md):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   (on a 4 GB server, build the images one at a time first: deploy/README.md, step 6)
 #
 # `docker compose up` without this file is unchanged: local development keeps ports 8000 and
 # 5173, the API docs and the mock site. With it:
