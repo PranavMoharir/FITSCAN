@@ -1,5 +1,6 @@
 """Extractor plug-ins on saved pages (LLD §9.7): fields, links, the browser rule and malformed HTML."""
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -56,6 +57,31 @@ def test_fake_python_jobs_detail_and_record():
     # The (randomly generated) description mentions agile, CSS, Html, Python, Django and SCRUM.
     assert record.required_skills == ["Agile", "CSS", "Django", "HTML", "Python", "Scrum"]
     assert record.job_type == "unknown" and record.min_experience_years is None  # "no experience" is not a number
+
+
+def test_fake_python_jobs_locations_are_read_from_each_card():
+    """Every card's own location, never a default or a shared value (checked against the live site on
+    24 November 2026). The site invents its towns, with the postal codes AA, AE and AP, so "Joybury, AE"
+    is source data, for exactly one posting."""
+    jobs = get_registry().get("fake_python_jobs").parse(FAKE_JOBS, fixture("fake_python_jobs_listing.html")).jobs
+    locations = [job.location for job in jobs]
+    assert len(set(locations)) == 100
+    assert all(re.fullmatch(r"[A-Z][A-Za-z' -]+, A[AEP]", location) for location in locations)
+    assert [(job.title, job.company) for job in jobs if job.location == "Joybury, AE"] == [
+        ("Manufacturing systems engineer", "Garcia PLC")]
+
+
+def test_fake_python_jobs_non_technical_posting_has_a_description_but_no_skills():
+    """Most of the site's postings are other professions whose generated text names no technology:
+    the description is read in full, and no skill is found because none is there."""
+    url = FAKE_JOBS + "jobs/manufacturing-systems-engineer-51.html"
+    extractor = get_registry().get("fake_python_jobs")
+    job = extractor.parse(url, fixture("fake_python_jobs_detail_non_technical.html")).jobs[0]
+    assert (job.title, job.company, job.location, job.posted_date) == (
+        "Manufacturing systems engineer", "Garcia PLC", "Joybury, AE", "2021-04-08")
+    assert job.description.startswith("Improve once worry newspaper laugh benefit.")
+    record = build_record(job, page_url=url, source="fake_python_jobs", fetched_at=FETCHED_AT).record
+    assert (record.required_skills, record.nice_to_have_skills) == ([], [])
 
 
 # --- Mock site ---------------------------------------------------------------------------------------

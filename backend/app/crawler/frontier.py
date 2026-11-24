@@ -125,7 +125,8 @@ class Crawler:
         finally:
             if self._renderer is not None:
                 self._renderer.close()
-        self._log_summary()
+        # Pages still queued when the loop ends were cut off by max_pages (a stop request is reported elsewhere).
+        self._log_summary(not_visited=0 if self.stats.stopped else len(frontier))
         return self.stats
 
     # --- one page ----------------------------------------------------------------------------
@@ -244,7 +245,7 @@ class Crawler:
                 self._sleep(wait)
         raise AssertionError("unreachable")
 
-    def _log_summary(self) -> None:
+    def _log_summary(self, not_visited: int = 0) -> None:
         s = self.stats
         self.sink.log(
             "INFO",
@@ -255,6 +256,17 @@ class Crawler:
             pages_skipped=s.pages_skipped, pages_discovered=s.pages_discovered, jobs_extracted=s.jobs_extracted,
             jobs_saved=s.jobs_saved, jobs_invalid=s.jobs_invalid,
         )
+        if not_visited:
+            # Without this line, a crawl cut off by max_pages looks like a complete one: the job "completes",
+            # and jobs seen only on a listing page are saved without a description, so with no skills.
+            pages = "page was" if not_visited == 1 else "pages were"
+            self.sink.log(
+                "WARNING",
+                f"Stopped at the page limit (max_pages {self.settings.max_pages}): {not_visited} discovered {pages} "
+                "not visited. Jobs seen only on a listing page have no description, so no skills, until their own "
+                "page is crawled; crawl again with a higher max_pages to include them.",
+                pages_not_visited=not_visited, max_pages=self.settings.max_pages,
+            )
         if s.unmatched_terms:
             top = ", ".join(f"{term} ({count})" for term, count in s.unmatched_terms.most_common(10))
             self.sink.log("INFO", f"Skill-like terms not in the taxonomy: {top}")

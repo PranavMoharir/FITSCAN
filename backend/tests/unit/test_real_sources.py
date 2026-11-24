@@ -226,4 +226,6 @@ def test_jobs_found_by_the_demo_extractor_on_its_site_are_kept_as_demo():
     site = FakeSite({seed: fixture("mock_static_listing.html")})
     stats, sink = board_crawl(site, seed, ("mock-site",))
     assert sink.saved and {r.record.source for r in sink.saved} == {"mock_static"}
-    assert not sink.log.messages("WARNING")
+    # Nothing dropped as a demo site's job. (The listing's links are not on this fake site, and the
+    # crawl's page limit of 5 leaves some unvisited, which the page-limit warning rightly reports.)
+    assert not [m for m in sink.log.messages("WARNING") if m.startswith("Dropped")]

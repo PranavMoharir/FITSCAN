@@ -6,9 +6,11 @@ from sqlalchemy import func, select
 
 from app.crawler.pipeline import build_record, save_records
 from app.extractors.base import RawJob
+from app.extractors.registry import get_registry
 from app.models import BackgroundJob, Job, JobSkill, Skill
 from app.skills.normalizer import get_taxonomy
 from app.skills.sync import skill_ids, sync_skills
+from tests.crawl_fakes import fixture
 
 FETCHED_AT = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
 APPLY = "https://careers.example.com/jobs/backend-python-developer"
@@ -81,6 +83,43 @@ def test_new_skill_information_replaces_the_old_links(session):
     save_records(session, [built(description="Requirements: Go\nNice to have: Docker")], None)
     job = session.execute(select(Job)).scalar_one()
     assert skills_of(session, job.job_id) == {"Go": "required", "Docker": "nice_to_have"}
+
+
+FAKE_JOBS = "https://realpython.github.io/fake-jobs/"
+
+
+def test_a_listing_only_job_gets_its_description_and_skills_from_a_later_crawl(session):
+    """Production, 24 November 2026: a crawl cut off by max_pages saved Fake Python Jobs from the listing
+    page only, with no description and so no skills. A later crawl that reaches their detail pages fills
+    them in, in place, with the source's own location; a posting whose text names no technology still
+    gets no skills (nothing is invented)."""
+    extractor = get_registry().get("fake_python_jobs")
+    first, second = BackgroundJob(type="crawl", status="running"), BackgroundJob(type="crawl", status="running")
+    session.add_all([first, second])
+    session.flush()
+
+    cards = extractor.parse(FAKE_JOBS, fixture("fake_python_jobs_listing.html")).jobs
+    save_records(session, [build_record(card, page_url=FAKE_JOBS, source="fake_python_jobs", fetched_at=FETCHED_AT)
+                           for card in cards], first.background_job_id)
+    python_url, other_url = FAKE_JOBS + "jobs/senior-python-developer-0.html", FAKE_JOBS + "jobs/manufacturing-systems-engineer-51.html"
+
+    def job(url) -> Job:
+        return session.execute(select(Job).where(Job.dedup_key == url)).scalar_one()
+
+    assert job(python_url).description is None and skills_of(session, job(python_url).job_id) == {}
+
+    for url, page in ((python_url, "fake_python_jobs_detail.html"), (other_url, "fake_python_jobs_detail_non_technical.html")):
+        detail = extractor.parse(url, fixture(page)).jobs[0]
+        result = save_records(session, [build_record(detail, page_url=url, source="fake_python_jobs", fetched_at=FETCHED_AT)],
+                              second.background_job_id)
+        assert (result.inserted, result.updated) == (0, 1)
+
+    assert session.execute(select(func.count()).select_from(Job)).scalar_one() == 100  # updated in place
+    python_job, other = job(python_url), job(other_url)
+    assert (python_job.location, other.location) == ("Stewartbury, AA", "Joybury, AE")  # the source's values
+    assert python_job.description and other.description.startswith("Improve once worry newspaper laugh benefit.")
+    assert skills_of(session, python_job.job_id) == dict.fromkeys(["Agile", "CSS", "Django", "HTML", "Python", "Scrum"], "required")
+    assert skills_of(session, other.job_id) == {}
 
 
 def test_different_jobs_stay_separate(session):

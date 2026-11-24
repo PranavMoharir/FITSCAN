@@ -46,6 +46,19 @@ def test_known_false_phrases_are_rejected(text):
     assert extract_skills(text) == []
 
 
+@pytest.mark.parametrize("sentence", [
+    "International big employee determine positive go Congress.",
+    "Admit Mrs look call spring establish together record.",
+    "Effect adult run point spring room.",
+    "Yeah process rest really wait if everything.",
+])
+def test_everyday_words_in_generated_job_text_are_not_skills(sentence):
+    """Sentences from Fake Python Jobs descriptions (24 November 2026): lowercase "go", "spring" and
+    "rest" are ordinary words there, so they must not become Go, Spring or REST requirements."""
+    skills = extract_job_skills(sentence)
+    assert (skills.required, skills.nice_to_have) == ([], [])
+
+
 def test_requirements_and_nice_to_have_example_from_the_lld():
     skills = extract_job_skills("Requirements: Python, FastAPI, PostgreSQL. Docker is a plus.\nNice to have: Redis, Kubernetes")
     assert skills.required == ["FastAPI", "PostgreSQL", "Python"]

@@ -57,6 +57,29 @@ def test_max_pages_is_respected():
     assert len(crawler.fetch_order) == 3 and stats.pages_processed == 3
 
 
+def page_limit_warnings(sink) -> list[str]:
+    return [m for m in sink.log.messages("WARNING") if m.startswith("Stopped at the page limit")]
+
+
+def test_a_crawl_cut_off_by_max_pages_says_how_many_pages_it_left():
+    """Production, 24 November 2026: a Fake Python Jobs crawl with max_pages 50 ended "completed" after the
+    listing and 49 of its 100 detail pages, and only "101 discovered" hinted that 51 jobs had been saved
+    from the listing alone, without a description and so without skills."""
+    _, stats, sink = crawl(tree_site(), max_pages=3)  # /, /a, /b; still queued: /private/admin, /c, /d, /e
+    warnings = page_limit_warnings(sink)
+    assert len(warnings) == 1
+    assert "(max_pages 3): 4 discovered pages were not visited" in warnings[0]
+    assert "crawl again with a higher max_pages" in warnings[0]
+    assert stats.pages_discovered - stats.pages_processed == 4
+
+
+def test_no_page_limit_warning_when_the_crawl_runs_out_of_pages_or_is_stopped():
+    _, _, sink = crawl(tree_site(), max_pages=50)  # every discovered page visited
+    assert page_limit_warnings(sink) == []
+    _, _, sink = crawl(tree_site(), max_pages=50, sink=MemorySink(stop_after=2))  # cancelled: reported elsewhere
+    assert page_limit_warnings(sink) == []
+
+
 def test_each_normalized_url_is_fetched_once():
     site = tree_site()
     crawl(site)
