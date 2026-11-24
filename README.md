@@ -14,7 +14,7 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 
 ## Status
 
-**Phases 1–8 done (final):** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, the public landing page and the application UI, plus three optional features: adjustable scoring weights, automatic re-matching after crawls and a CI pipeline, and real job sources across industries next to the demo sites. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
+**Phases 1–8 done (final):** project setup, database, background jobs with the job crawler, resume upload with PDF parsing and OCR, the matching engine, the search, detail and export API, the public landing page and the application UI, plus three of the brief's optional features (adjustable scoring weights, automatic re-matching after crawls and a CI pipeline) and real job sources across industries next to the demo sites. Crawls, resume parsing and match runs happen in the Celery worker; their status, progress, logs, jobs, candidates and matches are stored in PostgreSQL.
 
 | Works now | Not done |
 |---|---|
@@ -24,8 +24,8 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 | Polite BFS crawler: robots.txt, rate limit, retries, SSRF guard, Playwright only when needed | |
 | Extractors: Fake Python Jobs, the mock site (static and JavaScript), generic JSON-LD | |
 | Real job sources: company career pages (schema.org `JobPosting`), Greenhouse and Lever job boards (public APIs); demo sites stay and are always labelled demo ([`DATA_SOURCES.md`](DATA_SOURCES.md)) | |
-| Industries: every job is classified (13 industries, or Other / Unclassified) with the evidence shown; filters for real or demo listings, industry and source | |
-| Live verification (22 November 2026): a Greenhouse board (10 jobs) and a Lever board (10 jobs) crawled into the running stack; real/demo labels, industries, original-posting links and `AUTO_REMATCH=false` confirmed ([`DATA_SOURCES.md`](DATA_SOURCES.md)) | |
+| Industries: every job is classified (12 industries, or Other / Unclassified) with the evidence shown; filters for real or demo listings, industry and source | |
+| Local verification (22 November 2026, not on the live demo): a Greenhouse board (10 jobs) and a Lever board (10 jobs) crawled into the running local stack; real/demo labels, industries, original-posting links and `AUTO_REMATCH=false` confirmed ([`DATA_SOURCES.md`](DATA_SOURCES.md)) | |
 | Job validation, de-duplication (upsert by `dedup_key`), skills taxonomy and job skills | |
 | Resume upload: size and `%PDF-` checks per file, UUID storage, one background job per upload | |
 | PDF parsing: one- and two-column layouts, tables, garbled text, OCR of scanned pages (Tesseract) | |
@@ -312,7 +312,9 @@ Skills are compared by their canonical names from the taxonomy, so "ReactJS" on 
 
 ## Matching hand check (5 candidates)
 
-Done on 22 November 2026 on the stored results of the latest match run (`computed_at` 13:50:44 UTC, default weights 70 / 15 / 10 / 5). Nothing was recomputed for this check. That run scored 128 jobs: the 108 demo jobs (100 from Fake Python Jobs, 8 from the mock site) and 20 real postings (10 from Code for America's Greenhouse board, 10 from Spotify's Lever board). 37 of the 128 jobs have extracted skills (18 demo, 19 real).
+Done on 22 November 2026 on the stored results of the latest match run in the local development database (`computed_at` 13:50:44 UTC, default weights 70 / 15 / 10 / 5). Nothing was recomputed for this check. That run scored 128 jobs: the 108 demo jobs (100 from Fake Python Jobs, 8 from the mock site) and 20 real postings (10 from Code for America's Greenhouse board, 10 from Spotify's Lever board). 37 of the 128 jobs have extracted skills (18 demo, 19 real).
+
+The [live demo](#deploy-publicly) holds a smaller synthetic set: the 108 demo jobs, without the 20 real postings, and the 4 candidates that `tests/resume_pdfs.py` generates, in which Kiran Rao's scanned resume is a copy of Asha Verma's. Nikhil Joshi and this check's Kiran Rao (a platform engineer in Hyderabad) are not on it, so some of its rankings differ from this table.
 
 The 5 candidates were parsed from synthetic resumes made with `tests/resume_pdfs.py`; the people are invented, and Kiran Rao's resume is a scanned image read by OCR. The database also holds other uploaded resumes, which are not synthetic; they are left out of this README and of [`samples/`](samples/).
 
@@ -383,8 +385,8 @@ The git history starts on 18 November. The design documents in [`docs/`](docs/) 
 | 18 November | Phases 1–3: project setup, database, background jobs and the crawler (`af0c829`, `37253d6`) |
 | 19 November | Phase 4: resume upload, PDF parsing and OCR (`d1eb2bb`); Phase 5: matching engine (`9d41403`); Phase 6: search, detail and export API (`bbe6bdb`) |
 | 21 November | Phase 7: landing page (`221dccc`, `441225d`, `1c32d69`); Phase 7B: application UI (`ed764a2`) |
-| 22 November | Phase 7C: adjustable weights, automatic re-matching and CI (`70be8ea`); Phase 7D: real jobs across industries (`1627f53`); Phase 8: integration and verification (`b724382`); resume title fix (`a422e47`); sample outputs and this README |
-| 23–24 November | Public deployment and hardening (`e2c5fdd`, `334f637`, `2e854d9`); fixes from the production audits (`c94e0cc`, `8108ce2`); final documentation. This deployment work is outside the 60-hour estimate above, which covers 11–22 November. |
+| 22 November | Phase 7C: adjustable weights, automatic re-matching and CI (`70be8ea`); Phase 7D: real jobs across industries (`1627f53`); Phase 8: integration and verification (`b724382`); resume title fix (`a422e47`); sample outputs and this README; the public deployment set-up (`e2c5fdd`) |
+| 23–24 November | Public deployment and hardening (`334f637`, `2e854d9`); fixes from the production audits (`c94e0cc`, `8108ce2`); final documentation. The deployment work, from `e2c5fdd` on 22 November onwards, is outside the 60-hour estimate above. |
 
 ## Local development
 
@@ -555,11 +557,11 @@ docker compose exec api python -m app.services.reclassify --apply    # write it
 ├── AI_USAGE.md               # how AI tools were used
 ├── SUBMISSION.md             # submission summary for reviewers: live site, features, testing, how to review
 ├── samples/                  # sample outputs (synthetic data only): jobs, candidates, top-10 match table
-├── .github/workflows/ci.yml  # CI: every backend test, and the frontend build
+├── .github/workflows/ci.yml  # CI: every backend test, the frontend build and the sidebar check
 ├── backend/
 │   ├── Dockerfile            # targets: api, worker
 │   ├── pyproject.toml        # dependencies and pytest settings
-│   ├── alembic.ini, alembic/ # database migrations (versions/: the initial schema)
+│   ├── alembic.ini, alembic/ # database migrations (versions/: the initial schema, then jobs.industry)
 │   ├── app/
 │   │   ├── main.py           # FastAPI app: routers, CORS, error handlers
 │   │   ├── config.py         # settings from environment variables
@@ -607,7 +609,7 @@ The full planned layout is in [LLD Part 2](docs/LLD/02_Project_Structure.md).
 | `GET /health` returns 503 | The response's `details` say whether `database` or `redis` is down. Check `docker compose ps`. |
 | The UI shows the old API address | `VITE_*` values are build-time: `docker compose up --build frontend`. |
 | The Celery worker exits at once on Windows | Add `--pool=solo`. |
-| A crawl seed gets 422 "private or reserved address" | The SSRF guard refuses internal hosts. Only hosts in `CRAWLER_PRIVATE_HOST_ALLOWLIST` (default `mock-site`) are exempt. |
+| A crawl seed gets 422 "private or reserved address" | The SSRF guard refuses internal hosts. Only hosts in `CRAWLER_PRIVATE_HOST_ALLOWLIST` are exempt: `mock-site` in `.env.example`, none by default or in production. |
 | A crawl of a JavaScript page fails with a browser error when running the worker from the venv | Run `playwright install chromium` once (the worker image already contains Chromium). |
 | An upload returns 422 "the upload is larger than 50 MB in total" | All files of one request together exceed `MAX_UPLOAD_REQUEST_MB`. Send them in several requests. (Through Docker Desktop's port forwarding on Windows, a client that does not wait for `100 Continue` may only see the answer after it stops sending; curl is answered at once.) |
 | An upload returns 422 `NO_VALID_FILES` | Every file was rejected; `details.rejected_files` gives each reason (`NOT_A_PDF`: the file does not start with `%PDF-` or is declared as another type; `FILE_TOO_LARGE`: over `MAX_UPLOAD_MB`). |
