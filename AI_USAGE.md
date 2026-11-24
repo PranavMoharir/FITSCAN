@@ -40,13 +40,19 @@ page, application UI, optional features, real job sources, final integration). E
 - For the submission: recalculated the five-candidate hand check from the database, produced `samples/` with
   FITSCAN's own export code from stored results, investigated database activity read-only, and drafted the README,
   `DATA_SOURCES.md` and this file.
+- For the public deployment (23–24 November): wrote the Caddy proxy, the production Compose override, the
+  environment check and the backup script and timer; worked on the production VM over SSH, with each disruptive step
+  approved by the developer (deploys of single services, a reboot test, backups, the demo-data crawls); audited the
+  live site (read-only browser runs through an SSH tunnel, an independent recalculation of every stored match) and
+  fixed the defects found, each with a regression test.
 
 ## How the output was checked
 
 The assistant ran these checks and reported the results to the developer:
 
-- **Automated tests**: 1,091 backend tests in the latest CI run (unit and PostgreSQL integration, run against a
-  separate `matching_test` database), the TypeScript build, and GitHub Actions on every push.
+- **Automated tests**: 1,158 backend tests in the latest CI run (unit and PostgreSQL integration, run against a
+  separate `matching_test` database), the TypeScript build, a sidebar rendering check, and GitHub Actions on every
+  push.
 - **Mutation checks** for safety rules: deliberately broken copies of the code (for example without the match-queue
   lock or without the demo-site guard) were run to confirm the tests catch the defect.
 - **Live checks** against the running stack: read-only browser runs that block every write request, database
@@ -59,7 +65,8 @@ The assistant ran these checks and reported the results to the developer:
 - Test data is synthetic: invented resumes (`backend/tests/resume_pdfs.py`) and invented companies in the job-board
   fixtures. No real resume is in the repository, and `samples/` and the README use only synthetic candidates.
 - Logs never contain resume text, names or contact details; uploaded files are stored under random IDs.
-- The assistant worked on the developer's machine; secrets in `.env` were not printed or committed.
+- The assistant worked on the developer's machine and, for the deployment, on the production VM over SSH; secrets in
+  either `.env` were not printed or committed, and checks compared secrets with logs only as counts, never values.
 
 ## Limits
 

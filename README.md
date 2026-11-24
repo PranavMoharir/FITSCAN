@@ -4,11 +4,13 @@ A platform that collects job openings by crawling, reads candidate resumes from 
 
 The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Matching_Platform_Full.md), the [LLD](docs/LLD/README.md) and the [architecture decisions](docs/ARCHITECTURE_DECISIONS.md). Data sources: [`DATA_SOURCES.md`](DATA_SOURCES.md). How AI was used: [`AI_USAGE.md`](AI_USAGE.md). Sample outputs (synthetic data only): [`samples/`](samples/). Demo video plan: [`docs/DEMO_VIDEO_SCRIPT.md`](docs/DEMO_VIDEO_SCRIPT.md).
 
+**Live demo:** <https://fitscan-demo.duckdns.org> (the application is at `/app`). It is password-protected; the login is shared separately, never in this repository. It holds synthetic data only. The submission summary for reviewers is [`SUBMISSION.md`](SUBMISSION.md).
+
 **Stack:**
 - Backend: Python 3.12, FastAPI, Pydantic, SQLAlchemy 2 and Alembic on PostgreSQL 17; Celery workers with Redis as the broker.
 - Crawling, parsing and matching: httpx and Playwright (headless Chromium); PyMuPDF, pdfplumber and Tesseract OCR; a weighted scoring formula, with scikit-learn TF-IDF used only to order exactly equal scores.
 - Frontend: React 19, TypeScript, Vite, Tailwind CSS 4, shadcn/ui (Radix UI), lucide-react, React Router and Framer Motion.
-- Deployment: Docker Compose (API, worker, PostgreSQL, Redis, frontend and an optional mock job site).
+- Deployment: Docker Compose (API, worker, PostgreSQL, Redis, frontend and an optional mock job site); in production, a Caddy HTTPS proxy in front, on an Oracle Cloud Always Free VM.
 
 ## Status
 
@@ -35,7 +37,7 @@ The design is in [`docs/`](docs/): the [detailed HLD](docs/HLD_Job_Candidate_Mat
 | Search and detail: `GET /jobs`, `/jobs/{id}`, `/candidates`, `/candidates/{id}`, `/skills`; filters, sorting, paging | |
 | Exports: jobs, candidates and the match table as CSV or JSON, streamed, with formula-injection protection | |
 | `GET /health`, OpenAPI docs at `/docs` (switched off in production with `API_DOCS_ENABLED=false`), one error envelope for every error | |
-| Public deployment, prepared but not yet deployed: a production Compose override with a Caddy proxy (HTTPS, password, rate and size limits, security headers) for a free Oracle Cloud VM ([Deploy publicly](#deploy-publicly)) | |
+| Public deployment, live since 23 November 2026 at <https://fitscan-demo.duckdns.org>: a production Compose override with a Caddy proxy (HTTPS, password, rate and size limits, security headers) on an Oracle Cloud Always Free VM, with daily verified database backups ([Deploy publicly](#deploy-publicly)) | |
 | Frontend: public landing page at `/` (sample data only, no API calls) and the application at `/app` (dashboard, background jobs, jobs, candidates, matching, skills, exports) | |
 | Sample outputs in [`samples/`](samples/): the demo jobs, the 5 synthetic candidates and their top-10 match table, as CSV and JSON | |
 
@@ -248,6 +250,7 @@ A crawl is a background job: the API saves it as `queued`, commits, and sends Re
 - **Extractors** are plug-ins: one file per site in `backend/app/extractors/`, found automatically. A page is fetched with httpx; Playwright renders it only if the extractor says the static HTML lacks the jobs.
 - **Each job** is normalized (ISO dates, salary numbers, job type, remote, years of experience), its skills are extracted and split into required and nice-to-have, it is validated with Pydantic, and it is upserted by `dedup_key` (the apply URL), so a listing card and its detail page become one job.
 - **Progress** after every page: pages processed / `max_pages`, succeeded and failed counts, and a heartbeat. Pages discovered, jobs extracted and jobs saved are in the log lines.
+- **Page limit.** A crawl that reaches `max_pages` while discovered pages are still queued ends `completed` and logs a warning: "Stopped at the page limit (max_pages N): M discovered pages were not visited". Jobs seen only on a listing page have no description, so no skills, until a later crawl reaches their own page, which then completes them in place. Fake Python Jobs needs `max_pages` 101 or more (its listing and 100 job pages); the New crawl dialog's default is 50.
 - **Stale jobs.** A running job without a heartbeat for `JOB_HEARTBEAT_TIMEOUT_SECONDS`, or a queued job not picked up within `JOB_QUEUED_TIMEOUT_SECONDS` while no job writes heartbeats, is marked `failed` (when the worker starts and whenever jobs are listed). Lost tasks are not re-sent.
 
 Supported sources: company career pages with schema.org `JobPosting` JSON-LD (`generic`), Greenhouse boards (`greenhouse`) and Lever boards (`lever`), read through their public JSON APIs; and the demo sites [Fake Python Jobs](https://realpython.github.io/fake-jobs/) (`fake_python_jobs`) and the mock site (`mock_static`, `mock_dynamic`), whose jobs are always labelled demo. Each job is classified into an industry from its title, skills and description (it never changes a match score). To add a source, add `backend/app/extractors/<site>.py` with a `BaseExtractor` subclass (see [`DATA_SOURCES.md`](DATA_SOURCES.md)).
@@ -365,7 +368,7 @@ For each candidate, the top 3 jobs, in the order of `GET /candidates/{id}/matche
 - **Resume parsing** uses layout and text rules (name from the largest font, title and years from the Experience section). An unusual layout can give a wrong or missing field; the title fix in commit `a422e47` is one example. OCR is Tesseract with English (`OCR_LANGUAGE=eng`), and its quality depends on the scan.
 - **Matches are precomputed.** After resumes are uploaded, someone has to start a match run; automatic re-matching runs only after a crawl. Each run rescores every pair, which is fine at this size (ADR-019 records the path for larger data).
 - **Crawling.** An interrupted crawl cannot be resumed (deferred), and a lost task is not re-sent. A site needs its own extractor, a Greenhouse or Lever board, or schema.org `JobPosting` data. Company career pages are verified only with a saved test page: the one live attempt (Shopify careers) found no jobs. A crawl's allowed domain is a whole host, so a crawl seeded at a careers page can wander to other pages of that host. Lever postings do not name the company, and Greenhouse publishes no salaries ([`DATA_SOURCES.md`](DATA_SOURCES.md)).
-- **Demo data.** Fake Python Jobs descriptions, companies and towns are generated, so their skills and locations do not mean much; real postings are the better test of matching quality.
+- **Demo data.** Fake Python Jobs is generated practice data: 85 of its 100 postings are other professions with filler text, only 10 (the Python postings) name any skill, none marks a skill nice-to-have, and every location is an invented town ("Joybury, AE"). Those 90 jobs score at most 15 by design (no skills: R = 0, N = 0), so they cannot tell candidates apart. The mock site's 8 jobs (required and nice-to-have skills, minimum experience, Indian cities, remote and hybrid) are the meaningful demo of matching; real postings are the better test of matching quality.
 - **Duplicates.** Two people who share an email address would be merged into one candidate (ADR-020).
 - **Security and privacy.** There are no user accounts; FITSCAN is meant for a trusted machine or network. A public deployment is protected by one shared password at the proxy (HTTP Basic authentication over HTTPS), not by per-user logins. Uploaded resumes stay on the `uploads` volume until the retention command is run.
 
@@ -381,6 +384,7 @@ The git history starts on 18 November. The design documents in [`docs/`](docs/) 
 | 19 November | Phase 4: resume upload, PDF parsing and OCR (`d1eb2bb`); Phase 5: matching engine (`9d41403`); Phase 6: search, detail and export API (`bbe6bdb`) |
 | 21 November | Phase 7: landing page (`221dccc`, `441225d`, `1c32d69`); Phase 7B: application UI (`ed764a2`) |
 | 22 November | Phase 7C: adjustable weights, automatic re-matching and CI (`70be8ea`); Phase 7D: real jobs across industries (`1627f53`); Phase 8: integration and verification (`b724382`); resume title fix (`a422e47`); sample outputs and this README |
+| 23–24 November | Public deployment and hardening (`e2c5fdd`, `334f637`, `2e854d9`); fixes from the production audits (`c94e0cc`, `8108ce2`); final documentation. This deployment work is outside the 60-hour estimate above, which covers 11–22 November. |
 
 ## Local development
 
@@ -427,6 +431,7 @@ The dev server runs on http://localhost:5173 and reads `VITE_*` variables from t
 ```bash
 cd backend && pytest            # unit tests, offline: no database, Redis or internet needed
 cd frontend && npm run build    # TypeScript type check + production build
+cd frontend && npm run check:sidebar   # the sidebar's link classes, full and collapsed (tablet rail)
 ```
 
 The unit tests cover the crawler (BFS, normalization, robots.txt, rate limiting, retries, 429/5xx/4xx, redirects, SSRF), the extractors on saved pages in `tests/fixtures/html/`, skill extraction, job validation, and resume parsing: upload checks (signature, streamed size limit, names as data only), PDF opening (corrupt, encrypted, page limit), reading order of one- and two-column pages, tables, the garbled-text fallback, scanned-page detection and OCR failures, every candidate field (including overlapping employment dates against a fixed "today") and `CandidateRecord` validation, and matching: the worked example, every scoring edge case (including jobs without skills), experience and location rules (remote, hybrid, unknown and unlisted cities, Bangalore = Bengaluru), exact scores, display rounding, the explanation text against the breakdown, the TF-IDF tie-breaker, the ranking order and the four score-precision cases of LLD §9.7, and search and export: parameter validation (422 for every bad or unknown parameter), the SQL of each filter and sort, CSV cell safety, quoting and filenames, and JSON streaming. They never use the internet: pages come from `httpx.MockTransport`, DNS is faked, and resumes are synthetic PDFs generated by `tests/resume_pdfs.py` (invented people only; no real resume is used).
@@ -465,7 +470,7 @@ docker compose run --rm --no-deps -v ./backend/tests:/app/tests:ro worker \
 
 The container gets every variable of `.env` from Compose. The settings tests remove all of them first, so they check the built-in defaults wherever they run.
 
-**Continuous integration.** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request to `main`. The backend job runs the whole suite (unit tests, the database integration tests against a throwaway PostgreSQL service whose only database is `matching_test`, and OCR with Tesseract) and fails if any test is skipped. The frontend job runs `npm ci` and `npm run build`. It needs no secrets.
+**Continuous integration.** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request to `main`. The backend job runs the whole suite (unit tests, the database integration tests against a throwaway PostgreSQL service whose only database is `matching_test`, and OCR with Tesseract) and fails if any test is skipped (1158 tests on 24 November 2026). The frontend job runs `npm ci`, `npm run build` and `npm run check:sidebar`. It needs no secrets.
 
 ## Configuration
 
@@ -498,6 +503,8 @@ file and log limits set up there).
 - The stack runs as its own Compose project, `fitscan-prod`, so its database volume is always new and separate from a local `fitscan` stack.
 
 The server gets its own, empty database. Fill it with synthetic data only: the demo job sites and the generated resumes from `tests/resume_pdfs.py`. Never copy a local database, backup or upload there.
+
+**The live deployment** (<https://fitscan-demo.duckdns.org>, since 23 November 2026) follows this guide. Its data is synthetic only: Fake Python Jobs (100 demo jobs) and the mock site (8 demo jobs), the generated resumes (3 invented people plus a scanned copy of one, read by OCR), and one match run over all pairs. A systemd timer backs up the database every day ([Backups and restore](deploy/README.md#backups-and-restore)).
 
 **Cost:** $0 within the Always Free allowance (2 OCPUs and 12 GB in total, 200 GB of storage, 10 TB of outbound data a month). A Free Tier account that is never upgraded can't create paid resources; charges are possible only after upgrading to Pay As You Go. Sign-up needs a card for verification. Oracle may reclaim a VM that stays idle for a week, and it halved the Arm allowance in June 2026, so keep database backups.
 
@@ -546,6 +553,7 @@ docker compose exec api python -m app.services.reclassify --apply    # write it
 ├── .env.example              # documented configuration, no secrets
 ├── DATA_SOURCES.md           # where jobs and resumes come from, terms and robots.txt checks
 ├── AI_USAGE.md               # how AI tools were used
+├── SUBMISSION.md             # submission summary for reviewers: live site, features, testing, how to review
 ├── samples/                  # sample outputs (synthetic data only): jobs, candidates, top-10 match table
 ├── .github/workflows/ci.yml  # CI: every backend test, and the frontend build
 ├── backend/

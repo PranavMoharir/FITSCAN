@@ -238,23 +238,30 @@ switched off, because the emulator cannot run it; the second command confirms th
 The server's database starts empty and is separate from your laptop's: never copy a local database, backup or upload
 folder to the server. Use only invented data:
 
-1. **Jobs.** In the application: **New crawl** → Fake Python Jobs (`https://realpython.github.io/fake-jobs/`, up to 110
-   pages). Public postings from a Greenhouse or Lever board can be added the same way.
+1. **Jobs.** In the application: **New crawl** → Fake Python Jobs (`https://realpython.github.io/fake-jobs/`) and set
+   **Max pages to 110**: the site has a listing and 100 job pages. With the dialog's default of 50 the crawl stops early,
+   logs "Stopped at the page limit", and half the jobs get no description or skills (crawl again with 110 to complete
+   them). Public postings from a Greenhouse or Lever board can be added the same way.
 2. **Resumes.** On your laptop, generate the synthetic PDFs: `cd backend && python -m tests.resume_pdfs sample-resumes`
    (one column, two columns, a skills table, a scanned page, an encrypted and a corrupt file; the people are invented).
    Upload them with **Upload resumes**. Do not upload any real person's resume, including your own.
 3. **Matches.** **Recompute matches** after the crawl and the uploads. Production keeps `AUTO_REMATCH=false`, so no match
    run starts by itself.
 
-The optional mock site (static and JavaScript pages) is off in production. To crawl it once:
+The optional mock site (8 structured jobs: required and nice-to-have skills, minimum experience, Indian cities, remote
+and hybrid) is off in production. To crawl it once, without changing `.env` (the API and the worker restart twice, a few
+seconds each; the database, Redis, frontend and proxy are not touched):
 
 ```bash
-echo "CRAWLER_PRIVATE_HOST_ALLOWLIST=mock-site" >> .env
-dc --profile demo up -d mock-site api worker
-# crawl http://mock-site:8080/static/index.html and http://mock-site:8080/dynamic/index.html in the UI, then:
-sed -i '/^CRAWLER_PRIVATE_HOST_ALLOWLIST=/d' .env
-dc stop mock-site && dc up -d api worker
+export CRAWLER_PRIVATE_HOST_ALLOWLIST=mock-site      # for these commands only
+dc --profile demo up -d --no-deps mock-site api worker
+# In the UI: New crawl → "Demo: FITSCAN mock site (static pages)", then the "(JavaScript page)" source; Recompute matches.
+unset CRAWLER_PRIVATE_HOST_ALLOWLIST
+dc up -d --no-deps api worker                        # the crawler's private-address exception is empty again
+dc --profile demo rm -sf mock-site
 ```
+
+If your `dc` alias uses `sudo`, pass the variable through it: `sudo CRAWLER_PRIVATE_HOST_ALLOWLIST=mock-site docker compose …`.
 
 ## What the proxy enforces
 

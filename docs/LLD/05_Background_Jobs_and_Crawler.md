@@ -189,6 +189,8 @@ while frontier not empty and pages_processed < max_pages and not cancel_requeste
                 visited.add(n); frontier.append((n, depth + 1))
 ```
 
+**Page limit.** When the loop stops because `pages_processed` reached `max_pages` while URLs are still queued, the crawl still ends `completed`, and its summary line is followed by a WARNING: "Stopped at the page limit (max_pages N): M discovered pages were not visited …". Jobs seen only on a listing page then have no description, so no skills, until a later crawl reaches their own page; the upsert by `dedup_key` (Section 5.17) then completes them in place. No warning is logged when every discovered page was visited or the crawl was cancelled. (Added on 24 November 2026, after a Fake Python Jobs crawl with `max_pages` 50 reached only 49 of its 100 job pages and looked complete.)
+
 ```mermaid
 flowchart TD
     S["Normalize the seed URL<br/>queue = [(seed, depth 0)]"] --> L{"Queue not empty,<br/>pages under max_pages<br/>and not cancelled?"}

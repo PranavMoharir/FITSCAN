@@ -46,11 +46,11 @@ It is written for two readers: the developer who implements the platform, and an
 
 ### 1.2 Implementation Status and Labels
 
-Because no application code exists, the whole LLD is **Planned**. It adds **no** features, endpoints, tables or columns beyond the HLD. Where the HLD leaves a small detail open (a parameter name, a response shape, a timeout), the LLD makes the simplest consistent choice. Each such choice is labelled **LLD decision** and listed in Section 1.6.
+This LLD was written before any code existed, so the whole of it was marked **Planned**; everything it specifies has since been implemented (18–22 November 2026, Phases 1–8; see the README's Status section). It adds **no** features, endpoints, tables or columns beyond the HLD. Where the HLD leaves a small detail open (a parameter name, a response shape, a timeout), the LLD makes the simplest consistent choice. Each such choice is labelled **LLD decision** and listed in Section 1.6.
 
 | Label | Meaning |
 |---|---|
-| **Planned** | Specified in the HLD, not yet implemented. This applies to everything unless another label is shown. |
+| **Planned** | Specified in the HLD. Written before implementation; everything it covers is now built. This applies to everything unless another label is shown. |
 | **Optional** | Part of the design but not required, for example the mock job site. |
 | **Could** | One of the brief's "Could" extras. Not part of the baseline build. |
 | **Open** | A question the HLD itself leaves open for review (for example its open question O2). |
@@ -1112,6 +1112,8 @@ while frontier not empty and pages_processed < max_pages and not cancel_requeste
             if n not in visited and allowed(n):
                 visited.add(n); frontier.append((n, depth + 1))
 ```
+
+**Page limit.** When the loop stops because `pages_processed` reached `max_pages` while URLs are still queued, the crawl still ends `completed`, and its summary line is followed by a WARNING: "Stopped at the page limit (max_pages N): M discovered pages were not visited …". Jobs seen only on a listing page then have no description, so no skills, until a later crawl reaches their own page; the upsert by `dedup_key` (Section 5.17) then completes them in place. No warning is logged when every discovered page was visited or the crawl was cancelled. (Added on 24 November 2026, after a Fake Python Jobs crawl with `max_pages` 50 reached only 49 of its 100 job pages and looked complete.)
 
 ```mermaid
 flowchart TD
